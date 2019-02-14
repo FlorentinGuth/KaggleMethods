@@ -4,7 +4,7 @@ import numpy as np
 from copy import deepcopy
 
 
-def test_hessian():
+def test_newton():
     ''' Checks that a single Newton iteration is sufficient to reach the
     solution of a quadratic problem. '''
     u = np.random.random(3)
@@ -39,28 +39,30 @@ def test_grad():
     def f(a, b):
         x = a * b + a.exp()
         x = x @ x.T
-        x = x.inv()**2
-        x = x.log() / b
+        x = x.inv()
+        x = (x**2).log() / b
         x = x.reshape(-1)[0:7:2].reshape((2, 2))
         x = x.tensordot(x, ([0, 1], [1, 0]))
         x = x[None]
         return x
 
-    def gradh(f, args, i, h=1e-7):
+    def gradh(f, args, i, h=1e-4):
         ''' Empirical gradient of f(*args) with respect to args[i]. '''
         res = f(*args)
         grad = np.empty(args[i].shape + res.shape)
         for index in np.ndindex(args[i].shape):
             argsh = list(deepcopy(args))
-            argsh[i].data[index] = argsh[i].data[index] + h
-            grad[index] = (f(*argsh).data - res.data) / h
+            argsh[i].data[index] = args[i].data[index] + h
+            argsh2 = list(deepcopy(args))
+            argsh2[i].data[index] = args[i].data[index] - h
+            grad[index] = (f(*argsh).data - f(*argsh2).data) / (2 * h)
         return ag.tensor(grad)
 
     def norm(x):
         return np.linalg.norm(x.reshape(-1))
 
-    args = ag.tensor(np.random.random((3, 3))), ag.tensor(
-        np.random.random((3, 3)))
+    args = (ag.tensor(np.random.random((3, 3))),
+            ag.tensor(np.random.random((3, 3))))
     res = f(*args)
     n = len(args)
     for i in range(n):
@@ -71,6 +73,7 @@ def test_grad():
         for j in range(n):
             hess = grad.compute_grad(args[j].id)
             hess2 = gradh(lambda *args: gradh(f, args, i), args, j)
-            # The error is high, but it's likely that it's because the empirical
-            # hessian is wrong and not the automatic one.
             print(norm(hess.data - hess2.data) / norm(hess2.data))
+
+
+test_grad()
