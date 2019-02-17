@@ -5,9 +5,9 @@ leaves = []  # Array of shapes of leaves
 
 
 def leaf(x):
-    ''' A leaf is a tensor whose gradient to itself is the constant I.
+    """ A leaf is a tensor whose gradient to itself is the constant I.
     As a user, you should not use this function (use tensor() instead).
-    '''
+    """
     x = np.array(x)
     x_id = len(leaves)
     leaves.append(x.shape)
@@ -22,7 +22,7 @@ def leaf(x):
 
 
 def tensor(x):
-    ''' Makes sure x is a t. '''
+    """ Makes sure x is a t. """
     if isinstance(x, t.Tensor):
         return x
     else:

@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import svm
 
+
 def load(X=True, k=0, train=True, embed=False):
     data = np.loadtxt('data/{}{}{}{}.csv'.format(
         'X' if X else 'Y', 'tr' if train else 'te', k, '_mat100' if embed else ''),
@@ -19,10 +20,12 @@ def load(X=True, k=0, train=True, embed=False):
         data = numeric
     return data
 
+
 def shuffle(*arrays):
     indices = np.arange(arrays[0].shape[0])
     np.random.shuffle(indices)
     return [a[indices] for a in arrays]
+
 
 def folds_split(k, *arrays):
     n = arrays[0].shape[0]
@@ -34,6 +37,7 @@ def folds_split(k, *arrays):
             (np.concatenate((a[:i * fold_size], a[(i+1) * fold_size:])), a[i * fold_size:(i+1) * fold_size])
             for a in arrays
         ]
+
 
 def evaluate(classifier, X, Y, folds=5):
     scores = []

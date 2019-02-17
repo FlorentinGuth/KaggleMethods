@@ -1,8 +1,10 @@
-from . import ops
+# from . import
+import ops
 import numpy as np
 
+
 class Tensor:
-    ''' A Tensor is only a wrapper to an immutable numpy array. '''
+    """ A Tensor is only a wrapper to an immutable numpy array. """
 
     def __init__(self, data, grad_fn, leaf_id=None):
         self.data = np.array(data)
@@ -16,15 +18,15 @@ class Tensor:
         self.grad_fn = grad_fn
 
     def compute_grad(self, leaf_id):
-        ''' tensor.compute_grad(leaf.id) returns the gradient of tensor with respect to leaf.
+        """ tensor.compute_grad(leaf.id) returns the gradient of tensor with respect to leaf.
         The return shape is leaf.shape + tensor.shape.
-        '''
+        """
         if leaf_id not in self.grad:
             self.grad[leaf_id] = self.grad_fn(leaf_id)
         return self.grad[leaf_id]
 
     def detach(self):
-        ''' Returns a new leaf tensor with the same data. '''
+        """ Returns a new leaf tensor with the same data. """
         return ops.leaf(self.data)
 
     def __str__(self):
@@ -34,7 +36,7 @@ class Tensor:
         return 'tensor({})'.format(repr(self.data))
 
     def grad_axes(self, axes):
-        ''' Convert axes into self to axes into self.grad. '''
+        """ Convert axes into self to axes into self.grad. """
         return tuple(d if d < 0 else d - self.ndim for d in np.index_exp[axes])
 
     @property

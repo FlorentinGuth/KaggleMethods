@@ -5,8 +5,8 @@ from copy import deepcopy
 
 
 def test_newton():
-    ''' Checks that a single Newton iteration is sufficient to reach the
-    solution of a quadratic problem. '''
+    """ Checks that a single Newton iteration is sufficient to reach the
+    solution of a quadratic problem. """
     u = np.random.random(3)
     v = np.random.random(3)
     w = np.random.random(3)
@@ -34,7 +34,7 @@ def test_newton():
 
 
 def test_grad():
-    ''' Compares empirical gradients and hessians to the automatically computed versions. '''
+    """ Compares empirical gradients and hessians to the automatically computed versions. """
 
     def f(a, b):
         x = a * b + a.exp()
@@ -47,7 +47,7 @@ def test_grad():
         return x
 
     def gradh(f, args, i, h=1e-4):
-        ''' Empirical gradient of f(*args) with respect to args[i]. '''
+        """ Empirical gradient of f(*args) with respect to args[i]. """
         res = f(*args)
         grad = np.empty(args[i].shape + res.shape)
         for index in np.ndindex(args[i].shape):
@@ -76,4 +76,6 @@ def test_grad():
             print(norm(hess.data - hess2.data) / norm(hess2.data))
 
 
-test_grad()
+if __name__ == '__main__':
+    test_grad()
+
