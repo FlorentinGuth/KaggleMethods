@@ -81,7 +81,7 @@ def sparse_prod(a, b, n, m):
 def k_grams(X, k=2, m=4, ret_inds=False):
     N, L = X.shape
 
-    encoding = (m**np.arange(k, dtype=int)).astype(np.uint64)
+    encoding = (m ** np.arange(k, dtype=np.uint64)).astype(np.uint64)
 
     k_grams_indices = rolling_window(X, window=k).dot(encoding)
 

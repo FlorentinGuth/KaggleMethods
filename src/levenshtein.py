@@ -3,12 +3,14 @@ from tqdm import tqdm_notebook
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor as Executor
 
+
 def _compute_distance_row(args):
     x, Y = args
     row = np.zeros(len(Y))
     for j, y in enumerate(Y):
         row[j] = Levenshtein.distance(x, y)
     return row
+
 
 def levenshtein_distance(X, Y=None, tqdm=False):
     if Y is None:
