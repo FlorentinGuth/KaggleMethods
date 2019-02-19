@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def load(X=True, k=0, train=True, embed=False):
+def load(X=True, k=0, train=True, embed=False, numeric=True):
     data = np.loadtxt(
         'data/{}{}{}{}.csv'.format('X' if X else 'Y', 'tr' if train else 'te',
                                    k, '_mat100' if embed else ''),
@@ -9,13 +9,13 @@ def load(X=True, k=0, train=True, embed=False):
         skiprows=(0 if embed else 1),
         usecols=(None if embed else 1),
         delimiter=(' ' if embed else ','))
-    if X and not embed:
+    if X and not embed and numeric:
         letters = np.array(list('ATCG'))
         data = np.array([list(s) for s in data])
-        numeric = np.zeros(data.shape)
+        array = np.zeros(data.shape)
         for i, l in enumerate(letters):
-            numeric[data == l] = i
-        data = numeric
+            array[data == l] = i
+        data = array
     return data
 
 
