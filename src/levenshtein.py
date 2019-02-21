@@ -16,7 +16,7 @@ def levenshtein_distance(X, Y=None, tqdm=False):
     if Y is None:
         Y = X
     d = np.zeros((len(X), len(Y)))
-    with Executor(max_workers=12) as executor:
+    with Executor(max_workers=2) as executor:
         iterator = enumerate(executor.map(_compute_distance_row, zip(X, [Y] * len(X))))
         if tqdm:
             iterator = tqdm_notebook(iterator, total=len(X))
