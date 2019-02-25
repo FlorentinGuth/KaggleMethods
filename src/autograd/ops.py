@@ -8,7 +8,7 @@ def leaf(x):
     """ A leaf is a tensor whose gradient to itself is the constant I.
     As a user, you should not use this function (use tensor() instead).
     """
-    x = np.array(x)
+    x = np.array(x, copy=False)
     x_id = len(leaves)
     leaves.append(x.shape)
 
@@ -22,21 +22,34 @@ def leaf(x):
 
 
 def tensor(x):
-    """ Makes sure x is a t. """
+    """ Makes sure x is a tensor. """
     if isinstance(x, t.Tensor):
         return x
     else:
         return leaf(x)
 
 
+def tensor_aggregate(x):
+    """ Makes sure x is a tensor, but works properly with lists/tuples of tensors. 
+    Typical use case is sum(list_of_tensors_with_grad).
+    """
+    if isinstance(x, np.ndarray):
+        return leaf(x)
+    elif not isinstance(x, t.Tensor):
+        # tuple, list, iterable...
+        return stack(x)
+    else:
+        return x
+
+
 def tensors(*args):
-    return (tensor(a) for a in args)
+    return tuple(tensor(a) for a in args)
 
 
 def samedims(*args):
     # Prepend 1s to the shape of its arguments so they have the same number of dimensions.
     nd = max(a.ndim for a in args)
-    return (a[(None, ) * (nd - a.ndim)] for a in args)
+    return tuple(a[(None, ) * (nd - a.ndim)] for a in args)
 
 
 def transpose(a, axes=None):
@@ -52,6 +65,15 @@ def transpose(a, axes=None):
     return t.Tensor(a.data.transpose(axes), grad_transpose)
 
 
+def moveaxis(a, source, destination):
+    a = tensor(a)
+
+    def grad_moveaxis(leaf_id):
+        return a.compute_grad(leaf_id).moveaxis(a.grad_axes(source), a.grad_axes(destination))
+
+    return t.Tensor(np.moveaxis(a.data, source, destination), grad_moveaxis)
+
+
 def reshape(a, shape):
     a = tensor(a)
 
@@ -63,12 +85,30 @@ def reshape(a, shape):
 
 
 def index(a, key):
+    a = tensor(a)
+
     def grad_index(leaf_id):
-        return a.compute_grad(leaf_id)[(slice(None, None, None), ) *
-                                       (len(leaves[leaf_id])) +
-                                       np.index_exp[key]]
+        return a.compute_grad(leaf_id)[(slice(None, None, None), ) * len(leaves[leaf_id]) + np.index_exp[key]]
 
     return t.Tensor(a.data[key], grad_index)
+
+
+def concatenate(arrays, axis=0):
+    arrays = tensors(*arrays)
+
+    def grad_concatenate(leaf_id):
+        return concatenate((a.compute_grad(leaf_id) for a in arrays), arrays[0].grad_axes(axis))
+
+    return t.Tensor(np.concatenate(tuple(a.data for a in arrays), axis), grad_concatenate)
+
+
+def stack(arrays, axis=0):
+    arrays = tensors(*arrays)
+
+    def grad_stack(leaf_id):
+        return stack(tuple(a.compute_grad(leaf_id) for a in arrays), axis if axis < 0 else axis + len(leaves[leaf_id]))
+
+    return t.Tensor(np.stack((a.data for a in arrays), axis), grad_stack)
 
 
 def add(a, b):
@@ -139,7 +179,9 @@ def tensordot(a, b, axes):
         axes_grad_a = a.grad_axes(tuple(axes_a))
         axes_grad_b = b.grad_axes(tuple(axes_b))
         return tensordot(a.compute_grad(leaf_id), b, (axes_grad_a, axes_b)) + \
-               tensordot(b.compute_grad(leaf_id), a, (axes_grad_b, axes_a))
+               tensordot(a, b.compute_grad(leaf_id), (axes_a, axes_grad_b))\
+                   .moveaxis(tuple(i + a.ndim - len(axes_a) for i in range(len(leaves[leaf_id]))),
+                             tuple(range(len(leaves[leaf_id]))))
 
     return t.Tensor(np.tensordot(a.data, b.data, axes), grad_tensordot)
 
@@ -182,14 +224,25 @@ def inv(a):
 
 
 def sum(a, axis=None):
-    a = tensor(a)
+    a = tensor_aggregate(a)
     if axis is None:
         axis = tuple(range(a.ndim))
 
     def grad_sum(leaf_id):
-        return a.compute_grad(leaf_id).sum(a.grad_axes(axis))
+        return sum(a.compute_grad(leaf_id), a.grad_axes(axis))
 
     return t.Tensor(np.sum(a.data, axis), grad_sum)
+
+
+def mean(a, axis=None):
+    a = tensor_aggregate(a)
+    if axis is None:
+        axis = tuple(range(a.ndim))
+
+    def grad_mean(leaf_id):
+        return mean(a.compute_grad(leaf_id), a.grad_axes(axis))
+
+    return t.Tensor(np.mean(a.data, axis), grad_mean)
 
 
 def exp(a):
@@ -216,6 +269,10 @@ def ones(*args, **kwargs):
 
 def empty(*args, **kwargs):
     return tensor(np.empty(*args, **kwargs))
+
+
+def eye(*args, **kwargs):
+    return tensor(np.eye(*args, **kwargs))
 
 
 def random(*args, **kwargs):

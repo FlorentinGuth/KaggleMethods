@@ -12,5 +12,7 @@
 - a priori not symmetric left/right
 - not symmetric A/T/C/G
 - robust to addition/deletion
+- proba kernel with HMM modeling
 ## Misc
 - investigate the common subsequences stuff
+- t-SNE / Kernel PCA (doesn't work?)

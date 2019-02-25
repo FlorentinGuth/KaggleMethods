@@ -6,7 +6,7 @@ class Tensor:
     """ A Tensor is only a wrapper to an immutable numpy array. """
 
     def __init__(self, data, grad_fn, leaf_id=None):
-        self.data = np.array(data)
+        self.data = np.array(data, copy=False)
         self.shape = self.data.shape
         self.size = self.data.size
         self.ndim = self.data.ndim
@@ -22,6 +22,10 @@ class Tensor:
         """
         if leaf_id not in self.grad:
             self.grad[leaf_id] = self.grad_fn(leaf_id)
+            if self.grad[leaf_id].shape != ops.leaves[leaf_id] + self.shape:
+                raise ValueError('shape mismatch: gradient of {} wrt {} is {} (culprit is {})'
+                                 .format(self.shape, ops.leaves[leaf_id],
+                                         self.grad[leaf_id].shape, self.grad_fn.__name__))
         return self.grad[leaf_id]
 
     def detach(self):
@@ -36,7 +40,10 @@ class Tensor:
 
     def grad_axes(self, axes):
         """ Convert axes into self to axes into self.grad. """
-        return tuple(d if d < 0 else d - self.ndim for d in np.index_exp[axes])
+        res = tuple(d if d < 0 else d - self.ndim for d in np.index_exp[axes])
+        if isinstance(axes, int):
+            return res[0]
+        return res
 
     @property
     def T(self):
@@ -44,6 +51,9 @@ class Tensor:
 
     def transpose(self, axes=None):
         return ops.transpose(self, axes)
+
+    def moveaxis(self, source, destination):
+        return ops.moveaxis(self, source, destination)
 
     def reshape(self, shape):
         return ops.reshape(self, shape)
@@ -86,6 +96,9 @@ class Tensor:
 
     def sum(self, axis=None):
         return ops.sum(self, axis)
+
+    def mean(self, axis=None):
+        return ops.mean(self, axis)
 
     def exp(self):
         return ops.exp(self)
