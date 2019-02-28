@@ -108,7 +108,7 @@ def stack(arrays, axis=0):
     def grad_stack(leaf_id):
         return stack(tuple(a.compute_grad(leaf_id) for a in arrays), axis if axis < 0 else axis + len(leaves[leaf_id]))
 
-    return t.Tensor(np.stack((a.data for a in arrays), axis), grad_stack)
+    return t.Tensor(np.stack(tuple(a.data for a in arrays), axis), grad_stack)
 
 
 def add(a, b):
