@@ -215,12 +215,14 @@ def matmul(a, b):
 
 
 def inv(a):
+    idata = np.linalg.inv(a.data)
+
     def grad_inv(leaf_id):
-        i = inv(a)  # can't be memoized, this needs to be a t.Tensor
+        i = t.Tensor(idata, grad_inv)
         i = i[(None, ) * len(leaves[leaf_id])]
         return -i @ a.compute_grad(leaf_id) @ i
 
-    return t.Tensor(np.linalg.inv(a.data), grad_inv)
+    return t.Tensor(idata, grad_inv)
 
 
 def sum(a, axis=None):
