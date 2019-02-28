@@ -262,24 +262,30 @@ def log(a):
 
 
 def zeros(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.zeros(*args, **kwargs))
 
 
 def ones(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.ones(*args, **kwargs))
 
 
 def empty(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.empty(*args, **kwargs))
 
 
 def full(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.full(*args, **kwargs))
 
 
 def eye(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.eye(*args, **kwargs))
 
 
 def random(*args, **kwargs):
+    kwargs.setdefault("dtype", np.float32)
     return tensor(np.random.random(*args, **kwargs))
