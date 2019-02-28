@@ -16,3 +16,5 @@
 ## Misc
 - investigate the common subsequences stuff
 - t-SNE / Kernel PCA (doesn't work?)
+- Use float32 instead of float64
+- Profile gradients both in space and time

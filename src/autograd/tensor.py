@@ -64,20 +64,35 @@ class Tensor:
     def __add__(self, other):
         return ops.add(self, other)
 
+    def __radd__(self, other):
+        return ops.add(other, self)
+
     def __neg__(self):
         return ops.neg(self)
 
     def __sub__(self, other):
         return ops.sub(self, other)
 
+    def __rsub__(self, other):
+        return ops.sub(other, self)
+
     def __mul__(self, other):
         return ops.mul(self, other)
+
+    def __rmul__(self, other):
+        return ops.mul(other, self)
 
     def __truediv__(self, other):
         return ops.div(self, other)
 
+    def __rtruediv__(self, other):
+        return ops.div(other, self)
+
     def __pow__(self, other):
         return ops.pow(self, other)
+
+    def __rpow__(self, other):
+        return ops.pow(other, self)
 
     def tensordot(self, other, axes):
         return ops.tensordot(self, other, axes)
@@ -90,6 +105,9 @@ class Tensor:
 
     def __matmul__(self, other):
         return ops.matmul(self, other)
+
+    def __rmatmul__(self, other):
+        return ops.matmul(other, self)
 
     def inv(self):
         return ops.inv(self)

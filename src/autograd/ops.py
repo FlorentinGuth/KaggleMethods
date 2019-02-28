@@ -271,6 +271,10 @@ def empty(*args, **kwargs):
     return tensor(np.empty(*args, **kwargs))
 
 
+def full(*args, **kwargs):
+    return tensor(np.full(*args, **kwargs))
+
+
 def eye(*args, **kwargs):
     return tensor(np.eye(*args, **kwargs))
 
