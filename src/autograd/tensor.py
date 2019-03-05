@@ -74,10 +74,11 @@ class Tensor:
             if leaf_id in self.children_ids:
                 self.grad[leaf_id] = self.grad_fn(leaf_id)
             else:
-                self.grad[leaf_id] = ops.leaf(np.zeros(())[(None,) * (ops.leaf_ndim(leaf_id) + self.ndim)])
+                # self.grad[leaf_id] = ops.leaf(np.zeros(())[(None,) * (ops.leaf_ndim(leaf_id) + self.ndim)])
+                self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape))
 
             if config['debug']:
-                if not ops.broadcastable(self.grad[leaf_id].shape, self.grad_shape(leaf_id)):
+                if self.grad[leaf_id].shape != self.grad_shape(leaf_id):
                     raise ValueError('shape mismatch: gradient of {} wrt {} is {} (culprit is {})'
                                      .format(self.shape, ops.leaf_shape(leaf_id),
                                              self.grad[leaf_id].shape, self.grad_fn.__name__))

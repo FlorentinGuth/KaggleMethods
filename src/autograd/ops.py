@@ -1,5 +1,6 @@
 from . import tensor as t
 import numpy as np
+import scipy.linalg
 
 leaves = []  # Array of shapes of leaves
 
@@ -168,8 +169,7 @@ def index(a, key):
     a = tensor(a)
 
     def grad_index(leaf_id):
-        return a.compute_grad(leaf_id)[(slice(None, None, None), ) * leaf_ndim(leaf_id)
-                                                       + np.index_exp[key]]
+        return a.compute_grad(leaf_id)[(slice(None, None, None), ) * leaf_ndim(leaf_id) + np.index_exp[key]]
 
     return t.Tensor(a.data[key], grad_index, children=[a])
 
@@ -303,6 +303,7 @@ def matmul(a, b):
 
 
 def inv(a):
+    a = tensor(a)
     idata = np.linalg.inv(a.data)
 
     def grad_inv(leaf_id):
@@ -310,6 +311,59 @@ def inv(a):
         return -i @ a.compute_grad(leaf_id) @ i
 
     return t.Tensor(idata, grad_inv, children=[a])
+
+
+def solve(a, b, hermitian=False, factor=None):
+    """ Returns x such that a @ x = b.    
+    :param a: the matrix to solve in, shape N x N
+    :param b: the right-hand side, shape N (x M)
+    :param hermitian: whether A is hermitian (symmetric positive definite), which speeds up computations.
+    :param factor: LU/Cholesky decomposition, if precomputed
+    :return: x, shape N (x M)
+    """
+    a, b = tensors(a, b)
+
+    if b.ndim == 1:
+        return solve(a, b[:, None], hermitian, factor)[:, 0]
+    n, m = b.shape
+
+    if hermitian:
+        fac = scipy.linalg.cho_factor
+        sol = scipy.linalg.cho_solve
+    else:
+        fac = scipy.linalg.lu_factor
+        sol = scipy.linalg.lu_solve
+
+    if factor is None:
+        factor = fac(a.data)
+    xdata = sol(factor, b.data)  # N x M
+
+    def grad_solve(leaf_id):
+        x = t.Tensor(xdata, grad_solve, children=[a, b])  # N, M
+        c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id).dot(x) if leaf_id in a.children_ids else 0)
+        # leaf_shape, N, M
+        c = c.moveaxis(-2, 0).reshape((n, -1))  # N, M*leaf_size
+        grad = solve(a, c, hermitian, factor)  # N, M*leaf_size
+        grad = grad.reshape((n,) + leaf_shape(leaf_id) + (m,)).moveaxis(0, -2)
+        return grad
+
+    return t.Tensor(xdata, grad_solve, children=[a, b])
+
+
+def solvenp(a, b):
+    """ Like solve but works batched. Not as fast though. """
+    a, b = tensors(a, b)
+    if b.ndim < a.ndim:
+        return solvenp(a, b[..., None])[..., 0]
+    a, b = samedims(a, b)
+    xdata = np.linalg.solve(a.data, b.data)  # ..., N (x M)
+
+    def grad_solvenp(leaf_id):
+        x = t.Tensor(xdata, grad_solvenp, children=[a, b])
+        c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id) @ x if leaf_id in a.children_ids else 0)
+        return solvenp(a, c)
+
+    return t.Tensor(xdata, grad_solvenp, children=[a, b])
 
 
 def sum(a, axis=None):

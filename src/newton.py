@@ -29,8 +29,7 @@ def fit(kernel, Y, folds, θ, iters=100):
             n = len(I_train)
 
             K_train = kernel(θ, I_train, I_train)
-            Inv = ag.inv(K_train + λ * ag.eye(n))
-            α = Inv.dot(Y_train)
+            α = ag.solve(K_train + λ * ag.eye(n), Y_train, hermitian=True)
 
             err_train, acc_train = err_acc(K_train, α, Y_train)
             err_trains.append(err_train)
@@ -50,7 +49,7 @@ def fit(kernel, Y, folds, θ, iters=100):
 
         g = err_valid.compute_grad(μ.id)
         H = g.compute_grad(μ.id)
-        Δ = -ag.inv(H).dot(g)
+        Δ = -ag.solve(H, g)
         return (μ + Δ).detach()
 
     for _ in progress:

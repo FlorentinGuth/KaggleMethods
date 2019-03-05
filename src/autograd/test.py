@@ -6,6 +6,11 @@ def norm(x):
     return np.linalg.norm(x.reshape(-1))
 
 
+def err_rel(x, y, ε=1e-10):
+    """ Relative error of y with respect to x. """
+    return norm(x - y) / (norm(x) + ε)
+
+
 def gradh(f, args, i, h=1e-4):
     """ Empirical gradient of f(*args) with respect to args[i]. """
     res = f(*args)
@@ -32,7 +37,7 @@ def check_gradients(f, *args, order=2, h=1e-4):
                 name_i = "{} \\partial_{}".format(name, i)
                 grad = func(*args).compute_grad(args[i].id)
                 grad2 = gradh(func, args, i, h)
-                print("{}:\t{:.2e}".format(name_i, norm(grad.data - grad2) / norm(grad2)))
+                print("{}:\t{:.2e}".format(name_i, err_rel(grad2, grad.data)))
                 # Use i=i forces python to capture by value when building the closure.
                 grads.append((name_i, lambda *args, i=i, func=func: func(*args).compute_grad(args[i].id)))
         functions = grads
