@@ -3,3 +3,4 @@ of common numpy functions. """
 
 from .ops import *
 from .tensor import *
+from . import test

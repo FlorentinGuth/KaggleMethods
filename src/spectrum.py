@@ -151,3 +151,16 @@ def cum_spectrum(X, Y=None, k=5, tqdm=False):
         kernel += k_spectrum(X, Y=Y, k=i)
 
     return kernel / k
+
+
+def k_spectra(X, Y=None, k=5, tqdm=False):
+    """
+     Computes the spectrum kernels between X and Y, up to k.
+    """
+    shape = (len(X), len(X) if Y is None else len(Y))
+    kernel = np.zeros((k,) + shape)
+
+    for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
+        kernel[i-1] = k_spectrum(X, Y=Y, k=i)
+
+    return kernel

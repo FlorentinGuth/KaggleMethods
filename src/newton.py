@@ -4,8 +4,8 @@ import tqdm
 
 
 def fit(kernel, Y, folds, θ, iters=100):
-    λ = ag.tensor(0)
-    μ = ag.concatenate((θ, ag.tensor(λ)[None])).detach()
+    λ = ag.zeros(()) # float32 scalar 0
+    μ = ag.concatenate((θ, λ[None])).detach(requires_grad=True)
 
     progress = tqdm.tqdm_notebook(range(iters))
     stats = []

@@ -1,10 +1,9 @@
 import autograd as ag
 import matplotlib.pyplot as plt
 import numpy as np
-from copy import deepcopy
 
 
-def test_newton():
+def test_newton(plot=False):
     """ Checks that a single Newton iteration is sufficient to reach the
     solution of a quadratic problem. """
     u = np.random.random(3)
@@ -17,7 +16,7 @@ def test_newton():
     def f(x):
         return A.dot(x).dot(x) / 2 + b.dot(x) + c
 
-    x = ag.tensor(100 * np.ones(3))
+    x = ag.tensor(100 * np.ones(3), requires_grad=True)
     fs = []
     for _ in range(10):
         fx = f(x)
@@ -28,54 +27,87 @@ def test_newton():
         d = H.inv().dot(g)
         x = (x - d).detach()
 
-    plt.plot(fs)
-    plt.show()
+    if plot:
+        plt.plot(fs)
+        plt.show()
     print('f*th = {}, f*nt = {}'.format(f(-A.inv().dot(b)), fs[-1]))
 
 
-def test_grad():
-    """ Compares empirical gradients and hessians to the automatically computed versions. """
+if __name__ == '__main__':
+    test_newton()
 
     def f(a, b):
         x = a * b + a.exp()
         x = x @ x.T
         x = x.inv()
-        x = (x**2).log() / b
+        x = (x ** 2).log() / b
         x = x.reshape(-1)[0:7:2].reshape((2, 2))
         x = x.tensordot(x, ([0, 1], [1, 0]))
         x = x[None]
         return x
+    ag.test.check_gradients(f, ag.random((3, 3), requires_grad=True),
+                               ag.random((3, 3), requires_grad=True))
 
-    def gradh(f, args, i, h=1e-4):
-        """ Empirical gradient of f(*args) with respect to args[i]. """
-        res = f(*args)
-        grad = np.empty(args[i].shape + res.shape)
-        for index in np.ndindex(args[i].shape):
-            argsh = list(deepcopy(args))
-            argsh[i].data[index] = args[i].data[index] + h
-            argsh2 = list(deepcopy(args))
-            argsh2[i].data[index] = args[i].data[index] - h
-            grad[index] = (f(*argsh).data - f(*argsh2).data) / (2 * h)
-        return ag.tensor(grad)
+    import os
 
-    def norm(x):
-        return np.linalg.norm(x.reshape(-1))
+    if not os.path.exists('data'):
+        os.chdir('..')
 
-    args = (ag.tensor(np.random.random((3, 3))),
-            ag.tensor(np.random.random((3, 3))))
-    res = f(*args)
-    n = len(args)
-    for i in range(n):
-        grad = res.compute_grad(args[i].id)
-        grad2 = gradh(f, args, i)
-        print(norm(grad.data - grad2.data) / norm(grad2.data))
+    from utils import *
+    from spectrum import *
+    from newton import fit
 
-        for j in range(n):
-            hess = grad.compute_grad(args[j].id)
-            hess2 = gradh(lambda *args: gradh(f, args, i), args, j)
-            print(norm(hess.data - hess2.data) / norm(hess2.data))
+    n = 500
+    d = 10
+    k = 2
+    X = np.random.random((n, d)).astype(np.float32)
+    Y = np.sin(X.sum(-1))
+    folds = k_folds_indices(X.shape[0], k=k)
+
+    def kernel(θ, I, J):
+        K = ag.exp(-ag.tensor(np.sum((X[I, None] - X[None, J]) ** 2, axis=-1)) / θ[0].exp())
+        return K
+
+    def epoch(μ):
+        θ, λ = μ[:-1], ag.exp(μ[-1])
+        err_trains = []
+        err_valids = []
+        acc_trains = []
+        acc_valids = []
+
+        def err_acc(K, α, Y):
+            Z = K.dot(α)
+            P = Z.data > .5
+            return ag.mean((Z - Y) ** 2), np.mean((P == Y.data))
+
+        for fold in folds:
+            I_train, I_valid = fold
+            Y_train = Y[I_train]
+            Y_valid = Y[I_valid]
+            n = len(I_train)
+
+            K_train = kernel(θ, I_train, I_train)
+            Inv = ag.inv(K_train + λ * ag.eye(n))
+            α = Inv.dot(Y_train)
+
+            err_train, acc_train = err_acc(K_train, α, Y_train)
+            err_trains.append(err_train)
+            acc_trains.append(acc_train)
+
+            K_valid = kernel(θ, I_valid, I_train)
+            err_valid, acc_valid = err_acc(K_valid, α, Y_valid)
+            err_valids.append(err_valid)
+            acc_valids.append(acc_valid)
+
+        err_train = ag.mean(err_trains)
+        err_valid = ag.mean(err_valids)
+        acc_train = np.mean(acc_trains)
+        acc_valid = np.mean(acc_valids)
+        return err_valid
 
 
-if __name__ == '__main__':
-    test_grad()
-
+    λ = ag.zeros(1)
+    θ = ag.zeros(1)
+    μ = ag.concatenate((θ, λ)).detach(requires_grad=True)
+    with ag.Config(debug=True):
+        ag.test.check_gradients(epoch, μ)

@@ -18,3 +18,14 @@
 - t-SNE / Kernel PCA (doesn't work?)
 - Use float32 instead of float64
 - Profile gradients both in space and time
+## 04/03/19
+- levenshtein won't work with gradients
+- approximation: dot product
+- we have formulas for gradients that we could use
+- maybe drop k-fold cross-val
+- gradients for SVM
+- optimize solve
+- optimize K to make points with similar labels close
+
+# Gradients
+- Implement freeing of closures / gradients?
