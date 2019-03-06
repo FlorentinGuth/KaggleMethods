@@ -1,6 +1,7 @@
 from . import tensor as t
 import numpy as np
 import scipy.linalg
+import cvxopt.solvers
 
 leaves = []  # Array of shapes of leaves
 
@@ -92,6 +93,15 @@ def moveaxis(a, source, destination):
         return a.compute_grad(leaf_id).moveaxis(a.grad_axes(source), a.grad_axes(destination))
 
     return t.Tensor(np.moveaxis(a.data, source, destination), grad_moveaxis, children=[a])
+
+
+def swapaxes(a, axis1, axis2):
+    a = tensor(a)
+
+    def grad_swapaxes(leaf_id):
+        return a.compute_grad(leaf_id).swapaxes(*a.grad_axes((axis1, axis2)))
+
+    return t.Tensor(np.swapaxes(a.data, axis1, axis2), grad_swapaxes, children=[a])
 
 
 def reshape(a, shape):
@@ -304,13 +314,13 @@ def matmul(a, b):
 
 def inv(a):
     a = tensor(a)
-    idata = np.linalg.inv(a.data)
+    i = None
 
     def grad_inv(leaf_id):
-        i = t.Tensor(idata, grad_inv, children=[a])
         return -i @ a.compute_grad(leaf_id) @ i
 
-    return t.Tensor(idata, grad_inv, children=[a])
+    i = t.Tensor(np.linalg.inv(a.data), grad_inv, children=[a])
+    return i
 
 
 def solve(a, b, hermitian=False, factor=None):
@@ -336,34 +346,63 @@ def solve(a, b, hermitian=False, factor=None):
 
     if factor is None:
         factor = fac(a.data)
-    xdata = sol(factor, b.data)  # N x M
+    x = None  # N x M
 
     def grad_solve(leaf_id):
-        x = t.Tensor(xdata, grad_solve, children=[a, b])  # N, M
         c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id).dot(x) if leaf_id in a.children_ids else 0)
         # leaf_shape, N, M
-        c = c.moveaxis(-2, 0).reshape((n, -1))  # N, M*leaf_size
-        grad = solve(a, c, hermitian, factor)  # N, M*leaf_size
-        grad = grad.reshape((n,) + leaf_shape(leaf_id) + (m,)).moveaxis(0, -2)
-        return grad
+        return solve_batch_b(a, c.swapaxes(-1, -2)).swapaxes(-1, -2)
 
-    return t.Tensor(xdata, grad_solve, children=[a, b])
+    x = t.Tensor(sol(factor, b.data), grad_solve, children=[a, b])
+    return x
 
 
-def solvenp(a, b):
+def solve_batch_b(a, b, hermitian=False, factor=None):
+    """ Like solve, but when b is shape ...xN. Return shape is ...xN. """
+    c = b.reshape((-1, b.shape[-1])).T  # N, -1
+    x = solve(a, c, hermitian, factor)  # N, -1
+    return x.T.reshape(b.shape)
+
+
+def solve_batch(a, b):
     """ Like solve but works batched. Not as fast though. """
     a, b = tensors(a, b)
     if b.ndim < a.ndim:
-        return solvenp(a, b[..., None])[..., 0]
+        return solve_batch(a, b[..., None])[..., 0]
     a, b = samedims(a, b)
-    xdata = np.linalg.solve(a.data, b.data)  # ..., N (x M)
+    x = None  # ..., N (x M)
 
     def grad_solvenp(leaf_id):
-        x = t.Tensor(xdata, grad_solvenp, children=[a, b])
         c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id) @ x if leaf_id in a.children_ids else 0)
-        return solvenp(a, c)
+        return solve_batch(a, c)
 
-    return t.Tensor(xdata, grad_solvenp, children=[a, b])
+    x = t.Tensor(np.linalg.solve(a.data, b.data), grad_solvenp, children=[a, b])
+    return x
+
+
+def qp(p, q, g, h, **kwargs):
+    # TODO (but useless): implement a, b and y
+    p, q, g, h = tensors(p, q, g, h)  # NxN, N, MxN, M
+    res = cvxopt.solvers.gp(*map(lambda c : cvxopt.matrix(c.data), (p, q, g, h)), **kwargs)
+    x, z = None, None  # N, M
+
+    def grad_x(leaf_id):
+        c = z / (g.dot(x)- h)  # M
+        d = (c[:, None] * g).T  # NxM
+        m = d.dot(g)  # NxN
+        f = p.compute_grad(leaf_id).dot(x) + q.compute_grad(leaf_id) + g.T.compute_grad(leaf_id).dot(z)  # ...xN
+        k = h.compute_grad(leaf_id) - g.compute_grad(leaf_id).dot(x)  # ...xM
+        j = k.dot(d.T)  # ...xN
+        return solve_batch_b(p - m, -(f + j))  # ...xN
+
+    def grad_z(leaf_id):
+        c = z / (g.dot(x) - h)  # M
+        k = h.compute_grad(leaf_id) - g.compute_grad(leaf_id).dot(x)  # ...xM
+        l = x.compute_grad(leaf_id).dot(g.T)  # ...xM
+        return c * (k - l)
+
+    x, z = (t.Tensor(np.array(res[s]), grad, children=[]) for s, grad in [('x', grad_x), ('z', grad_z)])
+    return x, z
 
 
 def sum(a, axis=None):

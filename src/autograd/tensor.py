@@ -127,6 +127,9 @@ class Tensor:
     def moveaxis(self, source, destination):
         return ops.moveaxis(self, source, destination)
 
+    def swapaxes(self, axis1, axis2):
+        return ops.swapaxes(self, axis1, axis2)
+
     def reshape(self, shape):
         return ops.reshape(self, shape)
 

@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
         def solve_np(θ):
             a, b = ab(θ)
-            return ag.solvenp(a, b)
+            return ag.solve_batch(a, b)
 
         def solve_sc(θ):
             a, b = ab(θ)
