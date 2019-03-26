@@ -383,11 +383,11 @@ def solve_batch(a, b):
 def qp(p, q, g, h, **kwargs):
     # TODO (but useless): implement a, b and y
     p, q, g, h = tensors(p, q, g, h)  # NxN, N, MxN, M
-    res = cvxopt.solvers.gp(*map(lambda c : cvxopt.matrix(c.data), (p, q, g, h)), **kwargs)
+    res = cvxopt.solvers.qp(*map(lambda c: cvxopt.matrix(c.data), (p, q, g, h)), **kwargs)
     x, z = None, None  # N, M
 
     def grad_x(leaf_id):
-        c = z / (g.dot(x)- h)  # M
+        c = z / (g.dot(x) - h)  # M
         d = (c[:, None] * g).T  # NxM
         m = d.dot(g)  # NxN
         f = p.compute_grad(leaf_id).dot(x) + q.compute_grad(leaf_id) + g.T.compute_grad(leaf_id).dot(z)  # ...xN
