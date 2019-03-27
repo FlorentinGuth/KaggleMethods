@@ -382,27 +382,31 @@ def solve_batch(a, b):
 
 def qp(p, q, g, h, **kwargs):
     # TODO (but useless): implement a, b and y
-    # TODO: use the new symbolic framework
     p, q, g, h = tensors(p, q, g, h)  # NxN, N, MxN, M
-    res = cvxopt.solvers.qp(*map(lambda c: cvxopt.matrix(c.data), (p, q, g, h)), **kwargs)
+    res = cvxopt.solvers.qp(*map(lambda c: cvxopt.matrix(c.data.astype(np.float64)), (p, q, g, h)), **kwargs)
     x, z = None, None  # N, M
 
     def grad_x(leaf_id):
         c = z / (g.dot(x) - h)  # M
         d = (c[:, None] * g).T  # NxM
         m = d.dot(g)  # NxN
-        f = p.compute_grad(leaf_id).dot(x) + q.compute_grad(leaf_id) + g.T.compute_grad(leaf_id).dot(z)  # ...xN
-        k = h.compute_grad(leaf_id) - g.compute_grad(leaf_id).dot(x)  # ...xM
-        j = k.dot(d.T)  # ...xN
-        return solve_batch_b(p - m, -(f + j))  # ...xN
+        f = s.Sum(
+            s.Linear(dot, s.Grad(p, leaf_id), s.Leaf(x)),
+            s.Grad(q, leaf_id),
+            s.Linear(dot, s.Linear(lambda x: x.swapaxes(-1, -2), s.Grad(g, leaf_id)), s.Leaf(z))
+        )  # ...xN
+        k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x)) # ...xM
+        j = s.Linear(dot, k, s.Linear(transpose, s.Leaf(d)))  # ...xN
+        return solve_batch_b(p - m, -(f + j).compute())  # ...xN
 
     def grad_z(leaf_id):
         c = z / (g.dot(x) - h)  # M
-        k = h.compute_grad(leaf_id) - g.compute_grad(leaf_id).dot(x)  # ...xM
-        l = x.compute_grad(leaf_id).dot(g.T)  # ...xM
-        return c * (k - l)
+        k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x))  # ...xM
+        l = s.Linear(dot, s.Grad(x, leaf_id), s.Leaf(g.T))  # ...xM
+        return c * (k - l).compute()
 
-    x, z = (t.Tensor(np.array(res[s]), grad, children=[]) for s, grad in [('x', grad_x), ('z', grad_z)])
+    x, z = (t.Tensor(np.array(res[name]).astype(p.dtype)[:, 0], grad, children=[p, q, g, h])
+            for name, grad in [('x', grad_x), ('z', grad_z)])
     return x, z
 
 

@@ -36,6 +36,16 @@ def test_newton(plot=False):
 if __name__ == '__main__':
     from time import time
     with ag.Config(debug=True):
+        def qp(u, v, w, q, g, h):
+            def outer(a, b):
+                return a[:, None] * b[None, :]
+            p = outer(u, u) + outer(v, v) + outer(w, w)
+            x, z = ag.qp(p, q, g, h, options=dict(show_progress=False))
+            return ag.sum(x) + ag.sum(z)
+        def rand(*shape):
+            return ag.random(shape, requires_grad=True)
+        ag.test.check_gradients(qp, rand(3), rand(3), rand(3), rand(3), rand(5, 3), rand(5), order=1)
+
         n = 2000
         a0 = ag.random((n, n))
         a0 = a0 / np.sqrt((a0 ** 2).sum().data / n)
