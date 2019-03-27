@@ -4,6 +4,16 @@ import tqdm
 
 
 def fit(kernel, Y, num_folds, θ, β=1, iters=100):
+    """ Parametric kernel ridge regression. Does a gradient descent on the kernel parameters (and the regularization)
+    to optimize the validation error ||Y_pred - Y_true||².
+    :param kernel: function from θ to kernel matrix (shape NxN)
+    :param Y: the labels to predict (shape N)
+    :param num_folds: number of folds in the cross-validation.
+    :param θ: the parameters
+    :param β: learning rate
+    :param iters: number of iterations to do
+    :return: θ, λ (regularization), stats (list of (err_train, err_valid, acc_train, acc_valid))
+    """
     λ = ag.zeros(()) # float32 scalar 0
     μ = ag.concatenate((θ, λ[None])).detach(requires_grad=True)
 
@@ -22,13 +32,14 @@ def fit(kernel, Y, num_folds, θ, β=1, iters=100):
             P = Z.data > .5
             return ag.mean((Z - Y) ** 2), np.mean((P == Y.data))
 
+        K = kernel(θ)
         for fold in k_folds_indices(Y.shape[0], num_folds):
             I_train, I_valid = fold
             Y_train = Y[I_train]
             Y_valid = Y[I_valid]
             n = len(I_train)
 
-            K_train = kernel(θ, I_train, I_train)
+            K_train = K[np.ix_(I_train, I_train)]
             α = ag.solve(K_train + λ * ag.eye(n), Y_train, hermitian=True)
 
             with ag.Config(grad=False):
@@ -36,7 +47,7 @@ def fit(kernel, Y, num_folds, θ, β=1, iters=100):
                 err_trains.append(err_train)
                 acc_trains.append(acc_train)
 
-            K_valid = kernel(θ, I_valid, I_train)
+            K_valid = K[np.ix_(I_valid, I_train)]
             err_valid, acc_valid = err_acc(K_valid, α, Y_valid)
             err_valids.append(err_valid)
             acc_valids.append(acc_valid)
@@ -76,21 +87,29 @@ if __name__ == '__main__':
         spectrum_K = np.stack([kernels[0][0] for kernels in spectrum_kernels]).astype(float)
         del spectrum_kernels
 
-        def spectrum_sum(θ, I, J):
-            K = ag.tensor(spectrum_K[:, I][:, :, J])  # kxNxN
+        K = ag.tensor(spectrum_K)
+        def spectrum_sum(θ):
             return ag.tensordot(K, ag.exp(θ), axes=([0], [0]))
 
-        n = 500
+        n = 2000
         θ = ag.zeros(spectrum_K.shape[0])
         print(θ)
+
+        import tracemalloc
+        tracemalloc.start()
         θ, λ, stats = fit(
             kernel=spectrum_sum,
             Y=train_Ys[0].astype(float)[:n],
             num_folds=2,
             θ=θ,
             β=10,
-            iters=100,
+            iters=3,
         )
         print(θ, λ)
+        snapshot = tracemalloc.take_snapshot()
+        top_stats = snapshot.statistics('lineno')
+        print("[ Top 10 ]")
+        for stat in top_stats[:10]:
+            print(stat)
 
     run()
