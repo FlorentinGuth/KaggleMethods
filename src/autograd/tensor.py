@@ -104,6 +104,9 @@ class Tensor:
     def __repr__(self):
         return 'tensor({})'.format(repr(self.data))
 
+    def __format__(self, format_spec):
+        return self.data.__format__(format_spec)
+
     def grad_axes(self, axes):
         """ Convert axes into self to axes into self.grad. """
         if isinstance(axes, list):
@@ -118,6 +121,9 @@ class Tensor:
     def grad_shape(self, leaf_id):
         """ Returns the shape of the gradient (or the shape it can broadcast to). """
         return ops.leaf_shape(leaf_id) + self.shape
+
+    def __len__(self):
+        return self.shape[0]
 
     @property
     def T(self):
@@ -206,3 +212,21 @@ class Tensor:
 
     def log(self):
         return ops.log(self)
+
+    def __lt__(self, other):
+        return ops.lt(self, other)
+
+    def __le__(self, other):
+        return ops.le(self, other)
+
+    def __eq__(self, other):
+        return ops.eq(self, other)
+
+    def __ne__(self, other):
+        return ops.ne(self, other)
+
+    def __ge__(self, other):
+        return ops.ge(self, other)
+
+    def __gt__(self, other):
+        return ops.gt(self, other)

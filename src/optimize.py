@@ -1,75 +1,100 @@
 import autograd as ag
-import numpy as np
 import tqdm
+import svm
 
 
-def fit(kernel, Y, num_folds, θ, β=1, iters=100):
-    """ Parametric kernel ridge regression. Does a gradient descent on the kernel parameters (and the regularization)
-    to optimize the validation error ||Y_pred - Y_true||².
+class KernelRidge:
+    def __init__(self, params):
+        self.λ = ag.exp(params[0])
+        self.α = None
+
+    def fit(self, K, y):
+        self.α = ag.solve(K + self.λ * ag.eye(len(y)), y, hermitian=True)
+
+    def predict(self, K):
+        return K.dot(self.α) > .5
+
+    def loss(self, K, y):
+        return ag.mean((K.dot(self.α) - y) ** 2)
+
+
+class SVM(svm.SVC):
+    def __init__(self, params):
+        super().__init__(C = ag.exp(params[0]))
+
+    def loss(self, K, y):
+        def hinge(z):
+            return ag.maximum(1 - z, 0)
+        return hinge(ag.tensor(y) * K.dot(self.alpha))
+
+
+def optimize(kernel, clf, Y, num_folds, θ, λ, β=1, iters=100):
+    """ Gradient descent on the kernel parameters and classifier hyper-parameters to optimize the validation loss.
     :param kernel: function from θ to kernel matrix (shape NxN)
+    :param clf: classifier class to fit
     :param Y: the labels to predict (shape N)
     :param num_folds: number of folds in the cross-validation.
-    :param θ: the parameters
+    :param θ: the kernel hyper-parameters (1D array)
+    :param λ: the classifier hyper-parameters (1D array)
     :param β: learning rate
     :param iters: number of iterations to do
-    :return: θ, λ (regularization), stats (list of (err_train, err_valid, acc_train, acc_valid))
+    :return: θ, λ, stats (list of (err_train, err_valid, acc_train, acc_valid))
     """
-    λ = ag.zeros(()) # float32 scalar 0
-    μ = ag.concatenate((θ, λ[None])).detach(requires_grad=True)
+    p = len(θ)
+    μ = ag.concatenate((θ, λ)).detach(requires_grad=True)
 
     progress = tqdm.tqdm_notebook(range(iters))
     stats = []
 
     def epoch():
-        θ, λ = μ[:-1], ag.exp(μ[-1])
+        θ, λ = μ[:p], μ[p:]
+        K = kernel(θ)
+        C = clf(λ)
+
         err_trains = []
         err_valids = []
         acc_trains = []
         acc_valids = []
 
-        def err_acc(K, α, Y):
-            Z = K.dot(α)
-            P = Z.data > .5
-            return ag.mean((Z - Y) ** 2), np.mean((P == Y.data))
+        def err_acc(K, Y):
+            return C.loss(K, Y), ag.mean((C.predict(K) == Y))
 
-        K = kernel(θ)
         for fold in k_folds_indices(Y.shape[0], num_folds):
             I_train, I_valid = fold
             Y_train = Y[I_train]
             Y_valid = Y[I_valid]
-            n = len(I_train)
 
             K_train = K[np.ix_(I_train, I_train)]
-            α = ag.solve(K_train + λ * ag.eye(n), Y_train, hermitian=True)
+            C.fit(K_train, Y_train)
 
             with ag.Config(grad=False):
-                err_train, acc_train = err_acc(K_train, α, Y_train)
+                err_train, acc_train = err_acc(K_train, Y_train)
                 err_trains.append(err_train)
                 acc_trains.append(acc_train)
 
             K_valid = K[np.ix_(I_valid, I_train)]
-            err_valid, acc_valid = err_acc(K_valid, α, Y_valid)
+            err_valid, acc_valid = err_acc(K_valid, Y_valid)
             err_valids.append(err_valid)
             acc_valids.append(acc_valid)
 
         err_train = ag.mean(err_trains)
         err_valid = ag.mean(err_valids)
-        acc_train = np.mean(acc_trains)
-        acc_valid = np.mean(acc_valids)
-        stats.append((err_train.detach(), err_valid.detach(), acc_train, acc_valid))
+        acc_train = ag.mean(acc_trains)
+        acc_valid = ag.mean(acc_valids)
+        stats.append((err_train.detach(), err_valid.detach(), acc_train.detach(), acc_valid.detach()))
         progress.desc = 'acc={:.2f}'.format(acc_valid)
 
         with ag.Config(grad=False):
             g = err_valid.compute_grad(μ.id)
             Δ = -β * g
             print('Θ norm {:.1e}, err_train {:.1e}, err_valid {:.1e}, acc_train {:.0f}%, acc_valid {:.0f}%, g norm {:.2e}, Δ norm {:.2e}'
-                  .format(ag.test.norm(θ.data), err_train.data, err_valid.data, 100*acc_train, 100*acc_valid, ag.test.norm(g.data), ag.test.norm(Δ.data)))
+                  .format(ag.test.norm(θ), err_train, err_valid, 100*acc_train, 100*acc_valid, ag.test.norm(g), ag.test.norm(Δ)))
         return (μ + Δ).detach()
 
     for _ in progress:
         μ = epoch()
 
-    return μ[:-1], ag.exp(μ[-1]), stats
+    return μ[:p], μ[p:], stats
 
 
 if __name__ == '__main__':
@@ -91,25 +116,20 @@ if __name__ == '__main__':
         def spectrum_sum(θ):
             return ag.tensordot(K, ag.exp(θ), axes=([0], [0]))
 
-        n = 2000
+        n = 200
         θ = ag.zeros(spectrum_K.shape[0])
-        print(θ)
+        λ = ag.zeros(1)
 
-        import tracemalloc
-        tracemalloc.start()
-        θ, λ, stats = fit(
+        θ, λ, stats = optimize(
             kernel=spectrum_sum,
+            clf=KernelRidge,
             Y=train_Ys[0].astype(float)[:n],
             num_folds=2,
             θ=θ,
+            λ=λ,
             β=10,
-            iters=3,
+            iters=100,
         )
         print(θ, λ)
-        snapshot = tracemalloc.take_snapshot()
-        top_stats = snapshot.statistics('lineno')
-        print("[ Top 10 ]")
-        for stat in top_stats[:10]:
-            print(stat)
 
     run()

@@ -446,6 +446,50 @@ def log(a):
     return t.Tensor(np.log(a.data), grad_log, children=[a])
 
 
+def lt(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data < b.data, None, children=[])
+
+
+def le(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data <= b.data, None, children=[])
+
+
+def eq(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data == b.data, None, children=[])
+
+
+def ne(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data != b.data, None, children=[])
+
+
+def ge(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data >= b.data, None, children=[])
+
+
+def gt(a, b):
+    a, b = tensors(a, b)
+    return t.Tensor(a.data > b.data, None, children=[])
+
+
+def where(c, a, b):
+    c, a, b = tensors(c, a, b)
+    c, a, b = samedims(c, a, b)
+
+    def grad_where(leaf_id):
+        return where(c, a.compute_grad(leaf_id), b.compute_grad(leaf_id))
+
+    return t.Tensor(np.where(c.data, a.data, b.data), grad_where, children=[a, b])
+
+
+def maximum(a, b):
+    return where(a > b, a, b)
+
+
 def zeros(*args, requires_grad=False, **kwargs):
     kwargs.setdefault("dtype", np.float32)
     return tensor(np.zeros(*args, **kwargs), requires_grad)

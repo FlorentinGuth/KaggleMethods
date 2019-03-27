@@ -1,8 +1,11 @@
+from .tensor import Tensor
 import numpy as np
 from copy import deepcopy
 
 
 def norm(x):
+    if isinstance(x, Tensor):
+        x = x.data
     return np.linalg.norm(x.reshape(-1))
 
 
