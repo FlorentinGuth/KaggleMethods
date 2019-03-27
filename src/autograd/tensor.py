@@ -56,9 +56,11 @@ class Tensor:
 
         if children is not None:
             self.requires_grad = any(child.requires_grad for child in children)
+            self.children = children if config['debug'] else []
             self.children_ids = frozenset().union(*(child.children_ids for child in children))
         else:
             self.requires_grad = requires_grad
+            self.children = []
             self.children_ids = frozenset([leaf_id])
 
         self.id = leaf_id
@@ -78,10 +80,10 @@ class Tensor:
                 self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape))
 
             if config['debug']:
-                if self.grad[leaf_id].shape != self.grad_shape(leaf_id):
-                    raise ValueError('shape mismatch: gradient of {} wrt {} is {} (culprit is {})'
-                                     .format(self.shape, ops.leaf_shape(leaf_id),
-                                             self.grad[leaf_id].shape, self.grad_fn.__name__))
+                # if self.grad[leaf_id].shape != self.grad_shape(leaf_id):
+                #     raise ValueError('shape mismatch: gradient of {} wrt {} is {} (culprit is {})'
+                #                      .format(self.shape, ops.leaf_shape(leaf_id),
+                #                              self.grad[leaf_id].shape, self.grad_fn.__name__))
 
                 if self.grad[leaf_id].data.max() != self.grad[leaf_id].data.max():
                     raise ValueError('NaNs in gradient (culprit is {}'.format(self.grad_fn.__name__))

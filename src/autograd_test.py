@@ -36,7 +36,6 @@ def test_newton(plot=False):
 if __name__ == '__main__':
     from time import time
     with ag.Config(debug=True):
-
         n = 2000
         a0 = ag.random((n, n))
         a0 = a0 / np.sqrt((a0 ** 2).sum().data / n)

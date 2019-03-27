@@ -1,4 +1,5 @@
 from . import tensor as t
+from . import symbols as s
 import numpy as np
 import scipy.linalg
 import cvxopt.solvers
@@ -39,11 +40,11 @@ def tensor(x, requires_grad=False):
 
 
 def tensor_aggregate(x, requires_grad=False):
-    """ Makes sure x is a tensor, but works properly with lists/tuples of tensors. 
+    """ Makes sure x is a tensor, but works properly with lists/tuples of tensors.
     Typical use case is sum(list_of_tensors_with_grad).
     """
     if isinstance(x, np.ndarray):
-        return leaf(x, requires_grad=False)
+        return leaf(x, requires_grad=requires_grad)
     elif not isinstance(x, t.Tensor):
         # tuple, list, iterable...
         return stack(x)
@@ -213,7 +214,7 @@ def add(a, b):
     a, b = samedims(a, b)
 
     def grad_add(leaf_id):
-        return a.compute_grad(leaf_id) + b.compute_grad(leaf_id)
+        return (s.Grad(a, leaf_id) + s.Grad(b, leaf_id)).compute()
 
     return t.Tensor(a.data + b.data, grad_add, children=[a, b])
 
@@ -237,7 +238,7 @@ def mul(a, b):
     a, b = samedims(a, b)
 
     def grad_mul(leaf_id):
-        return a.compute_grad(leaf_id) * b + a * b.compute_grad(leaf_id)
+        return (s.Grad(a, leaf_id) * s.Leaf(b) + s.Leaf(a) * s.Grad(b, leaf_id)).compute()
 
     return t.Tensor(a.data * b.data, grad_mul, children=[a, b])
 
@@ -247,8 +248,7 @@ def div(a, b):
     a, b = samedims(a, b)
 
     def grad_truediv(leaf_id):
-        return (a.compute_grad(leaf_id) * b - a * b.compute_grad(leaf_id)) / (
-            b**2)
+        return (s.Grad(a, leaf_id) * s.Leaf(b) - s.Leaf(a) * s.Grad(b, leaf_id)).compute() / b**2
 
     return t.Tensor(a.data / b.data, grad_truediv, children=[a, b])
 
@@ -262,23 +262,24 @@ def pow(a, b):
             # Defined even if a < 0
             return b * a.compute_grad(leaf_id) * a**(b - 1)
         # Defined for a > 0
-        return (b * a.compute_grad(leaf_id) +
-                b.compute_grad(leaf_id) * a * log(a)) * a**(b - 1)
+        return (s.Leaf(b) * s.Grad(a, leaf_id) + s.Grad(b, leaf_id) * s.Leaf(a) * s.Leaf(log(a))).compute() * a**(b - 1)
 
     return t.Tensor(a.data**b.data, grad_pow, children=[a, b])
 
 
 def tensordot(a, b, axes):
     a, b = tensors(a, b)
+    a, b = expand_arrays((a, b), axes)
 
     def grad_tensordot(leaf_id):
         axes_a, axes_b = axes
         axes_grad_a = a.grad_axes(tuple(axes_a))
         axes_grad_b = b.grad_axes(tuple(axes_b))
-        return (tensordot(a.compute_grad(leaf_id), b, (axes_grad_a, axes_b)) if leaf_id in a.children_ids else 0) + \
-               (tensordot(a, b.compute_grad(leaf_id), (axes_a, axes_grad_b))\
-                   .moveaxis(tuple(i + a.ndim - len(axes_a) for i in range(leaf_ndim(leaf_id))),
-                             tuple(range(leaf_ndim(leaf_id)))) if leaf_id in b.children_ids else 0)
+        t1 = s.Tensordot(s.Grad(a, leaf_id), s.Leaf(b), (axes_grad_a, axes_b))
+        t2 = s.Tensordot(s.Leaf(a), s.Grad(b, leaf_id), (axes_a, axes_grad_b))
+        reshape = lambda x: x.moveaxis(tuple(i + a.ndim - len(axes_a) for i in range(leaf_ndim(leaf_id))),
+                             tuple(range(leaf_ndim(leaf_id))))
+        return (t1 + s.Linear(reshape, t2)).compute()
 
     return t.Tensor(np.tensordot(a.data, b.data, axes), grad_tensordot, children=[a, b])
 
@@ -306,8 +307,7 @@ def matmul(a, b):
     a, b = samedims(a, b)
 
     def grad_matmul(leaf_id):
-        return (a.compute_grad(leaf_id) @ b if leaf_id in a.children_ids else 0) + \
-               (a @ b.compute_grad(leaf_id) if leaf_id in b.children_ids else 0)
+        return (s.Grad(a, leaf_id) @ s.Leaf(b) + s.Leaf(a) @ s.Grad(b, leaf_id)).compute()
 
     return t.Tensor(a.data @ b.data, grad_matmul, children=[a, b])
 
@@ -324,7 +324,7 @@ def inv(a):
 
 
 def solve(a, b, hermitian=False, factor=None):
-    """ Returns x such that a @ x = b.    
+    """ Returns x such that a @ x = b.
     :param a: the matrix to solve in, shape N x N
     :param b: the right-hand side, shape N (x M)
     :param hermitian: whether A is hermitian (symmetric positive definite), which speeds up computations.
@@ -349,7 +349,7 @@ def solve(a, b, hermitian=False, factor=None):
     x = None  # N x M
 
     def grad_solve(leaf_id):
-        c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id).dot(x) if leaf_id in a.children_ids else 0)
+        c = (s.Grad(b, leaf_id) - s.Linear(dot, s.Grad(a, leaf_id), s.Leaf(x))).compute()
         # leaf_shape, N, M
         return solve_batch_b(a, c.swapaxes(-1, -2)).swapaxes(-1, -2)
 
@@ -372,16 +372,17 @@ def solve_batch(a, b):
     a, b = samedims(a, b)
     x = None  # ..., N (x M)
 
-    def grad_solvenp(leaf_id):
-        c = b.compute_grad(leaf_id) - (a.compute_grad(leaf_id) @ x if leaf_id in a.children_ids else 0)
+    def grad_solve_batch(leaf_id):
+        c = (s.Grad(b, leaf_id) - s.Grad(a, leaf_id) @ s.Leaf(x)).compute()
         return solve_batch(a, c)
 
-    x = t.Tensor(np.linalg.solve(a.data, b.data), grad_solvenp, children=[a, b])
+    x = t.Tensor(np.linalg.solve(a.data, b.data), grad_solve_batch, children=[a, b])
     return x
 
 
 def qp(p, q, g, h, **kwargs):
     # TODO (but useless): implement a, b and y
+    # TODO: use the new symbolic framework
     p, q, g, h = tensors(p, q, g, h)  # NxN, N, MxN, M
     res = cvxopt.solvers.gp(*map(lambda c : cvxopt.matrix(c.data), (p, q, g, h)), **kwargs)
     x, z = None, None  # N, M

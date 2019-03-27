@@ -41,3 +41,29 @@ def check_gradients(f, *args, order=2, h=1e-4):
                 # Use i=i forces python to capture by value when building the closure.
                 grads.append((name_i, lambda *args, i=i, func=func: func(*args).compute_grad(args[i].id)))
         functions = grads
+
+
+def build_graph(tensor, name):
+    import graphviz
+
+    dot = graphviz.Digraph()
+    builded = {}
+    size = 0
+
+    def build_graph_rec(dot, node):
+        nonlocal size
+        if id(node) not in builded:
+            builded[id(node)] = True
+            name = node.grad_fn.__name__[len('grad_'):] if node.grad_fn is not None else 'None'
+            dot.node(str(id(node)), '{} {}'.format(name, node.shape))
+            sz = 4
+            for s in node.shape:
+                sz *= s
+            size += sz
+            for child in node.children:
+                build_graph_rec(dot, child)
+                dot.edge(str(id(node)), str(id(child)))
+
+    build_graph_rec(dot, tensor)
+    dot.save('{}.gv'.format(name))
+    print('Size of {} is {:.0f} Mo'.format(name, size / 1024 / 1024))
