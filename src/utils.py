@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import os
+import svm
 from concurrent.futures import ProcessPoolExecutor as Executor
 
 
@@ -162,7 +163,7 @@ def grid_search(model, params, K, Y, folds=5, no_perfect=False):
         p = params[np.argmax(results[non_perfect][:, 0] - results[non_perfect][:, 1])]
     else:
         p = params[np.argmax(results[:, 0] - results[:, 1])]
-    return p, np.array(evaluate(model(**p), K, Y, folds=40))
+    return p, np.array(evaluate(model(**p), K, Y, folds=20))
 
 
 def final_train(model, p, K_train, Y_train, K_test):
@@ -194,11 +195,10 @@ def save_predictions(predictions, file):
 
 
 def svm_kernels(kernels, prediction_file=None):
-    from sklearn import svm
     train_Ks, test_Ks = kernels
 
     model = svm.SVC
-    params = [dict(kernel='precomputed', C=C) for C in 10. ** np.arange(-7, 7)]
+    params = [dict(kernel='precomputed', C=C) for C in 2. ** np.arange(0, 10)]
     total_perf = np.zeros(4)
     predictions = []
     for K, Y, K_test in zip(train_Ks, train_Ys, test_Ks):
