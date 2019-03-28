@@ -14,6 +14,9 @@
 - gradients for SVM or ridge regression if unstable
 - drop folds if too costly
 - if still too costly: explicit freeing
+## Edit distance
+- reimplement in Cython
+- read paper: seems to be a kernel
 ## Other
 - optimize K to make points with similar labels close
 ### Brand new kernel (Probably will never be)

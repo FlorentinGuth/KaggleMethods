@@ -31,12 +31,12 @@ class SVM(svm.SVC):
         return hinge(ag.tensor(y) * K.dot(self.alpha)).mean()
 
 
-def optimize(kernel, clf, Y, num_folds, θ, λ, β=1, iters=100):
+def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
     """ Gradient descent on the kernel parameters and classifier hyper-parameters to optimize the validation loss.
     :param kernel: function from θ to kernel matrix (shape NxN)
     :param clf: classifier class to fit
     :param Y: the labels to predict (shape N)
-    :param num_folds: number of folds in the cross-validation.
+    :param fold_generator: generates a list of random folds (list of (train_idx, valid_idx) pairs)
     :param θ: the kernel hyper-parameters (1D array)
     :param λ: the classifier hyper-parameters (1D array)
     :param β: learning rate
@@ -62,19 +62,15 @@ def optimize(kernel, clf, Y, num_folds, θ, λ, β=1, iters=100):
         def err_acc(K, Y):
             return C.loss(K, Y), ag.mean((C.predict(K) == Y))
 
-        for fold in k_folds_indices(Y.shape[0], num_folds):
-            I_train, I_valid = fold
+        for I_train, I_valid in fold_generator():
             Y_train = Y[I_train]
-            Y_valid = Y[I_valid]
-
             K_train = K[np.ix_(I_train, I_train)]
             C.fit(K_train, Y_train)
+            err_train, acc_train = err_acc(K_train, Y_train)
+            err_trains.append(err_train)
+            acc_trains.append(acc_train)
 
-            with ag.Config(grad=False):
-                err_train, acc_train = err_acc(K_train, Y_train)
-                err_trains.append(err_train)
-                acc_trains.append(acc_train)
-
+            Y_valid = Y[I_valid]
             K_valid = K[np.ix_(I_valid, I_train)]
             err_valid, acc_valid = err_acc(K_valid, Y_valid)
             err_valids.append(err_valid)
@@ -90,6 +86,7 @@ def optimize(kernel, clf, Y, num_folds, θ, λ, β=1, iters=100):
         with ag.Config(grad=False):
             g = err_valid.compute_grad(μ.id)
             Δ = -β * g
+            print(θ)
             print('Θ norm {:.1e}, err_train {:.1e}, err_valid {:.1e}, acc_train {:.0f}%, acc_valid {:.0f}%, g norm {:.2e}, Δ norm {:.2e}'
                   .format(ag.test.norm(θ), err_train, err_valid, 100*acc_train, 100*acc_valid, ag.test.norm(g), ag.test.norm(Δ)))
         return (μ + Δ).detach()
@@ -112,25 +109,29 @@ if __name__ == '__main__':
         spectrum_kernels = []
         for k in range(1, 14):
             spectrum_kernels.append(precomputed_kernels(k_spectrum, 'spectrum_{}'.format(k), k=k))
-        spectrum_K = np.stack([kernels[0][0] for kernels in spectrum_kernels]).astype(float)
+        spectrum_K = np.sum([kernels[0][0] for kernels in spectrum_kernels], axis=0).astype(float)
         del spectrum_kernels
 
-        K = ag.tensor(spectrum_K)
+        print(ag.test.summary(spectrum_K))
+        fake_K = np.ones((len(spectrum_K), len(spectrum_K)))
+
+        K = ag.stack((spectrum_K, fake_K))
         def spectrum_sum(θ):
             return ag.tensordot(K, ag.exp(θ), axes=([0], [0]))
 
-        n = 200
-        θ = ag.zeros(spectrum_K.shape[0])
+        n = 1000
+        num_folds = 2
+        θ = ag.tensor([-10, 0])
         λ = ag.zeros(1)
 
         θ, λ, stats = optimize(
             kernel=spectrum_sum,
-            clf=KernelRidge,
+            clf=SVM,
             Y=train_Ys[0].astype(float)[:n],
-            num_folds=2,
+            fold_generator=lambda: k_folds_indices(n, num_folds),
             θ=θ,
             λ=λ,
-            β=10,
+            β=1e2,
             iters=100,
         )
         print(θ, λ)

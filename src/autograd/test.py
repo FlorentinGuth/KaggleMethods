@@ -9,6 +9,12 @@ def norm(x):
     return np.linalg.norm(x.reshape(-1))
 
 
+def summary(x):
+    if isinstance(x, Tensor):
+        x = x.data
+    return '{} {} min {:.2e} max {:.2e} mean {:.2e}'.format(x.dtype, x.shape, x.min(), x.max(), x.mean())
+
+
 def err_rel(x, y, ε=1e-10):
     """ Relative error of y with respect to x. """
     return norm(x - y) / (norm(x) + ε)
