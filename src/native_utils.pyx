@@ -15,29 +15,57 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
 
     cdef int l_a = a.shape[0]
     cdef int l_b = bs.shape[1]
+
+    # TODO: we could have a x10 speedup (but x100 memory) if we store the entire distance array for gradient computations.
     cdef np.ndarray[np.float32_t, ndim=1] prev_row = np.empty(l_b + 1, dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim=1] cur_row  = np.empty(l_b + 1, dtype=np.float32)
-
     cdef np.ndarray[np.float32_t, ndim=1] dists = np.empty(bs.shape[0], dtype=np.float32)
 
+    cdef np.ndarray[np.float32_t, ndim=2] grad_prev_row = np.empty((l_b + 1, 10), dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=2] grad_cur_row  = np.empty((l_b + 1, 10), dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=2] grad_dists = np.empty((bs.shape[0], 10), dtype=np.float32)
+
     cdef int i, j, k
+    cdef np.ndarray[np.float32_t, ndim=1] values = np.empty(3, dtype=np.float32)
+    cdef int best_op
     for k in range(bs.shape[0]):
         prev_row[0] = 0
+        grad_prev_row[0] = 0
         for j in range(l_b):
             prev_row[j + 1] = prev_row[j] + weights[bs[k, j]]
+            grad_prev_row[j + 1] = grad_prev_row[j]
+            grad_prev_row[j + 1, bs[k, j]] += 1
         for i in range(l_a):
             cur_row[0] = prev_row[0] + weights[a[i]]
+            grad_cur_row[0] = grad_prev_row[0]
+            grad_cur_row[0, a[i]] += 1
 
             for j in range(l_b):
-                cur_row[j + 1] = min(
-                    prev_row[j + 1] + weights[a[i]],
-                    cur_row[j] + weights[bs[k, j]],
-                    prev_row[j] if a[i] == bs[k, j] else prev_row[j] + weights[sub_op[a[i], bs[k, j]]]
-                )
+                values[0] = prev_row[j + 1] + weights[a[i]]
+                values[1] = cur_row[j] + weights[bs[k, j]]
+                values[2] = prev_row[j] if a[i] == bs[k, j] else prev_row[j] + weights[sub_op[a[i], bs[k, j]]]
+                best_op = values.argmin()
+
+                cur_row[j + 1] = values[best_op]
+                if best_op == 0:
+                    grad_cur_row[j + 1] = grad_prev_row[j + 1]
+                    grad_cur_row[j + 1, a[i]] += 1
+                elif best_op == 1:
+                    grad_cur_row[j + 1] = grad_cur_row[j]
+                    grad_cur_row[j + 1, bs[k, j]] += 1
+                elif a[i] == bs[k, j]:
+                    grad_cur_row[j + 1] = grad_prev_row[j]
+                else:
+                    grad_cur_row[j + 1] = grad_prev_row[j]
+                    grad_cur_row[j + 1, sub_op[a[i], bs[k, j]]] += 1
+
             cur_row, prev_row = prev_row, cur_row
+            grad_cur_row, grad_prev_row = grad_prev_row, grad_cur_row
 
         dists[k] = prev_row[l_b]
-    return dists
+        grad_dists[k] = grad_prev_row[l_b]
+
+    return dists, grad_dists.T
 
 # noinspection PyUnresolvedReferences
 @cython.boundscheck(False)
@@ -209,4 +237,5 @@ def local_alignment_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.in
         grad_e_dists[k] = grad_e_M_prev_row[l_b] + grad_e_A_prev_row[l_b] + grad_e_B_prev_row[l_b]
         grad_s_dists[k] = grad_s_M_prev_row[l_b] + grad_s_A_prev_row[l_b] + grad_s_B_prev_row[l_b]
 
-    return dists, grad_d_dists, grad_e_dists, grad_s_dists
+    grad_dists = np.concatenate((grad_d_dists[None], grad_e_dists[None], grad_s_dists.T), axis=0)
+    return dists, grad_dists
