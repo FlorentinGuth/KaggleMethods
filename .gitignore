@@ -3,4 +3,6 @@ __pycache__
 .idea
 predictions
 kernels
-
+*.c
+*.pyd
+build
