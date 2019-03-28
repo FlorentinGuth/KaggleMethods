@@ -16,7 +16,7 @@ def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
 
     Ys = [Y[i:].data for i in range(len(X))]
     d = np.zeros((len(X), len(Y)), dtype=np.float32)
-    g = np.empty((len(X), len(Y), len(weights)), dtype=np.float32)
+    g = np.empty((len(weights), len(X), len(Y)), dtype=np.float32)
     with Executor(max_workers=multiprocessing.cpu_count()) as executor:
         iterator = enumerate(executor.map(dist_fn, X.data, Ys, [weights.data] * len(X)))
         if tqdm:
@@ -24,12 +24,12 @@ def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
         for i, (row, grad_row) in iterator:
             d[i, i:] = row
             d[i, :i] = d[:i, i]
-            g[i, i:] = grad_row
-            g[i, :i] = g[:i, i]
+            g[:, i, i:] = grad_row
+            g[:, i, :i] = g[:, :i, i]
 
     g_tensor = ag.Tensor(g, None, children=[])
     def grad_d(leaf_id):
-        return ag.tensordot(weights.compute_grad(leaf_id), g_tensor, axes=([1], [0]))
+        return ag.tensordot(weights.compute_grad(leaf_id), g_tensor, axes=([-1], [0]))
 
     return ag.Tensor(d, grad_d, children=[weights])
 
@@ -46,8 +46,10 @@ def main():
     import utils
     weights = np.ones(10, dtype=np.float32)
     weights[:4] = 2
-    dists = levenshtein_distance(weights, utils.load(k=0).astype(np.int)[:2000], tqdm=True)
-    print(dists[dists != 0].max(), dists[dists != 0].mean(), dists[dists != 0].min())
+    weights = ag.tensor(weights, requires_grad=True)
+    dists = levenshtein_distance(weights, utils.load(k=0).astype(np.int)[:50], tqdm=True)
+    # print(dists[dists != 0].max(), dists[dists != 0].mean(), dists[dists != 0].min())
+    print(dists.compute_grad(weights.id))
 
 
 if __name__ == '__main__':
