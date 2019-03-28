@@ -16,7 +16,6 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
     cdef int l_a = a.shape[0]
     cdef int l_b = bs.shape[1]
 
-    # TODO: we could have a x10 speedup (but x100 memory) if we store the entire distance array for gradient computations.
     cdef np.ndarray[np.float32_t, ndim=1] prev_row = np.empty(l_b + 1, dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim=1] cur_row  = np.empty(l_b + 1, dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim=1] dists = np.empty(bs.shape[0], dtype=np.float32)
@@ -64,6 +63,71 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
 
         dists[k] = prev_row[l_b]
         grad_dists[k] = grad_prev_row[l_b]
+
+    return dists, grad_dists.T
+
+
+# noinspection PyUnresolvedReferences
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def levenshtein_one_vs_many_v2(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t, ndim=2] bs,
+                               np.ndarray[np.float32_t, ndim=1] weights):
+    cdef np.ndarray[np.int_t, ndim=2] sub_op = np.empty((4, 4), dtype=np.int)
+    sub_op[0] = [-1, 4, 5, 6]
+    sub_op[1] = [4, -1, 7, 8]
+    sub_op[2] = [5, 7, -1, 9]
+    sub_op[3] = [6, 8, 9, -1]
+
+    cdef int l_a = a.shape[0]
+    cdef int l_b = bs.shape[1]
+
+    cdef np.ndarray[np.float32_t, ndim=2] partial_dists = np.empty((l_a + 1, l_b + 1), dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=1] dists = np.empty(bs.shape[0], dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=2] grad_dists = np.zeros((bs.shape[0], 10), dtype=np.float32)
+
+    cdef int i, j, k
+    for k in range(bs.shape[0]):
+        partial_dists[0] = 0
+        for j in range(l_b):
+            partial_dists[0, j + 1] = partial_dists[0, j] + weights[bs[k, j]]
+        for i in range(l_a):
+            partial_dists[i + 1, 0] = partial_dists[i, 0] + weights[a[i]]
+
+            for j in range(l_b):
+                partial_dists[i + 1, j + 1] = min(
+                    partial_dists[i, j + 1] + weights[a[i]],
+                    partial_dists[i + 1, j] + weights[bs[k, j]],
+                    partial_dists[i, j] if a[i] == bs[k, j] else partial_dists[i, j] + weights[sub_op[a[i], bs[k, j]]]
+                )
+
+        dists[k] = partial_dists[l_a, l_b]
+
+        i = l_a - 1
+        j = l_b - 1
+        while i >= 0 and j >= 0:
+            del_cost = partial_dists[i, j + 1] + weights[a[i]]
+            ins_cost = partial_dists[i + 1, j] + weights[bs[k, j]]
+            sub_cost = partial_dists[i, j] if a[i] == bs[k, j] else partial_dists[i, j] + weights[sub_op[a[i], bs[k, j]]]
+
+            if del_cost < ins_cost and del_cost < sub_cost:
+                grad_dists[k, a[i]] += 1
+                i -= 1
+            elif ins_cost < sub_cost:
+                grad_dists[k, bs[k, j]] += 1
+                j -= 1
+            elif a[i] == bs[k, j]:
+                i -= 1
+                j -= 1
+            else:
+                grad_dists[k, sub_op[a[i], bs[k, j]]] += 1
+                i -= 1
+                j -= 1
+        while i >= 0:
+            grad_dists[k, a[i]] += 1
+            i -= 1
+        while j >= 0:
+            grad_dists[k, bs[k, j]] += 1
+            j -= 1
 
     return dists, grad_dists.T
 

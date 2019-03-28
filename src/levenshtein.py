@@ -38,6 +38,10 @@ def levenshtein_distance(weights, X, Y=None, tqdm=False):
     return parallel_dists(native_utils.levenshtein_one_vs_many, weights, X, Y, tqdm)
 
 
+def levenshtein_distance_v2(weights, X, Y=None, tqdm=False):
+    return parallel_dists(native_utils.levenshtein_one_vs_many_v2, weights, X, Y, tqdm)
+
+
 def local_alignment_kernel(weights, X, Y=None, tqdm=False, beta=0.5):
     return parallel_dists(native_utils.local_alignment_one_vs_many, np.exp(beta * weights), X, Y, tqdm)
 
@@ -46,10 +50,13 @@ def main():
     import utils
     weights = np.ones(10, dtype=np.float32)
     weights[:4] = 2
+    weights += 0.1 * np.random.random(10)
     weights = ag.tensor(weights, requires_grad=True)
-    dists = levenshtein_distance(weights, utils.load(k=0).astype(np.int)[:50], tqdm=True)
-    # print(dists[dists != 0].max(), dists[dists != 0].mean(), dists[dists != 0].min())
-    print(dists.compute_grad(weights.id))
+    def test(f):
+        dists = f(weights, utils.load(k=0).astype(np.int)[:50], tqdm=True)
+        # print(dists, dists.compute_grad(weights.id))
+    test(levenshtein_distance)
+    test(levenshtein_distance_v2)
 
 
 if __name__ == '__main__':
