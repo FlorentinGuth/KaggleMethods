@@ -20,12 +20,15 @@ class KernelRidge:
 
 class SVM(svm.SVC):
     def __init__(self, params):
-        super().__init__(C = ag.exp(params[0]))
+        super().__init__(C=ag.exp(params[0]))
+
+    def predict(self, K):
+        return ag.tensor(super().predict(K))
 
     def loss(self, K, y):
         def hinge(z):
             return ag.maximum(1 - z, 0)
-        return hinge(ag.tensor(y) * K.dot(self.alpha))
+        return hinge(ag.tensor(y) * K.dot(self.alpha)).mean()
 
 
 def optimize(kernel, clf, Y, num_folds, θ, λ, β=1, iters=100):

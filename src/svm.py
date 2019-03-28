@@ -22,4 +22,4 @@ class SVC:
 
     def predict(self, k):
         k = ag.tensor(k)
-        return k.dot(self.alpha) >= 0.
+        return k.dot(self.alpha).data >= 0.
