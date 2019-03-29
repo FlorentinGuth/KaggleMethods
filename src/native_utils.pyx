@@ -330,6 +330,8 @@ def coordinate_descent(np.ndarray[np.float32_t, ndim=2] k, np.ndarray[np.int_t, 
     cdef np.float32_t prev_alpha = 0
     cdef np.float32_t y_i = 0
 
+    cdef int i, j
+
     for j in range(n_iter):
         perm = np.random.permutation(n)
         bound = 0
