@@ -25,9 +25,7 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
     cdef np.ndarray[np.float32_t, ndim=2] grad_dists = np.empty((bs.shape[0], 10), dtype=np.float32)
 
     cdef int i, j, k
-    # cdef np.ndarray[np.float32_t, ndim=1] values = np.empty(3, dtype=np.float32)
     cdef np.float32_t del_cost, ins_cost, sub_cost
-    # cdef int best_op
     for k in range(bs.shape[0]):
         prev_row[0] = 0
         grad_prev_row[0] = 0

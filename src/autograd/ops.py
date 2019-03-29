@@ -19,14 +19,15 @@ def leaf(x, requires_grad=False):
     """ A leaf is a tensor whose gradient to itself is the constant I.
     As a user, you should not use this function (use tensor() instead).
     """
-    x = np.array(x, copy=False)
+    if not isinstance(x, np.ndarray):
+        x = np.array(x, copy=False, dtype=np.float32)
     x_id = len(leaves)
     leaves.append(x.shape)
 
     def grad_leaf(leaf_id):
         # leaf_id = x_id, otherwise the optimization would have pruned that part of the graph.
         assert leaf_id == x_id
-        return leaf(np.eye(x.size).reshape(x.shape + x.shape))
+        return leaf(np.eye(x.size, dtype=np.float32).reshape(x.shape + x.shape))
 
     return t.Tensor(x, grad_leaf, x_id, requires_grad)
 
@@ -188,6 +189,8 @@ def index(a, key):
 def concatenate(arrays, axis=0):
     arrays = tensors(*arrays)
     arrays = samedims(*arrays)
+    if axis < 0:
+        axis += arrays[0].ndim
     axes = list(range(axis)) + list(range(axis + 1, arrays[0].ndim))
     arrays = expand_arrays(arrays, [axes for _ in range(len(arrays))])
 
@@ -207,6 +210,11 @@ def stack(arrays, axis=0):
                      axis if axis < 0 else axis + leaf_ndim(leaf_id))
 
     return t.Tensor(np.stack(tuple(a.data for a in arrays), axis), grad_stack, children=arrays)
+
+
+def diagflat(a):
+    a = tensor(a)
+    return a * eye(len(a))
 
 
 def add(a, b):
@@ -391,24 +399,81 @@ def qp(p, q, g=None, h=None, **kwargs):
     res = cvxopt.solvers.qp(*map(lambda c: cvxopt.matrix(c.data.astype(np.float64)), (p, q, g, h)), **kwargs)
     x, z = None, None  # N, M
 
-    def grad_x(leaf_id):
-        c = z / (g.dot(x) - h)  # M
-        d = (c[:, None] * g).T  # NxM
-        m = d.dot(g)  # NxN
+    # def grad_x0(leaf_id):
+    #     c = z / (g.dot(x) - h)  # M
+    #     d = (c[:, None] * g).T  # NxM
+    #     m = d.dot(g)  # NxN
+    #     f = s.Sum(
+    #         s.Linear(dot, s.Grad(p, leaf_id), s.Leaf(x)),
+    #         s.Grad(q, leaf_id),
+    #         s.Linear(dot, s.Linear(lambda x: x.swapaxes(-1, -2), s.Grad(g, leaf_id)), s.Leaf(z))
+    #     )  # ...xN
+    #     k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x)) # ...xM
+    #     j = s.Linear(dot, k, s.Linear(transpose, s.Leaf(d)))  # ...xN
+    #     return solve_batch_b(p - m, -(f + j).compute())  # ...xN
+    #
+    # def grad_z0(leaf_id):
+    #     c = z / (g.dot(x) - h)  # M
+    #     k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x))  # ...xM
+    #     l = s.Linear(dot, s.Grad(x, leaf_id), s.Leaf(g.T))  # ...xM
+    #     return c * (k - l).compute()
+
+    def grad_qp_robust(leaf_id):
         f = s.Sum(
             s.Linear(dot, s.Grad(p, leaf_id), s.Leaf(x)),
             s.Grad(q, leaf_id),
             s.Linear(dot, s.Linear(lambda x: x.swapaxes(-1, -2), s.Grad(g, leaf_id)), s.Leaf(z))
-        )  # ...xN
-        k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x)) # ...xM
-        j = s.Linear(dot, k, s.Linear(transpose, s.Leaf(d)))  # ...xN
-        return solve_batch_b(p - m, -(f + j).compute())  # ...xN
+        ).compute()  # ...xN
+        if f is None:
+            f = zeros(leaf_shape(leaf_id) + x.shape)
+        k = (s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x))).compute()  # ...xM
+        if k is None:
+            k = zeros(leaf_shape(leaf_id) + z.shape)
+        a = concatenate((
+            concatenate((p, g.T), axis=1),
+            concatenate((z[:, None] * g, (g.dot(x) - h)[:, None] * eye(len(z))), axis=1)),
+        axis=0)  # (N+M)x(N+M)
+        b = concatenate((-f, z * k), axis=-1)  # ...x(N+M)
+        grad = solve_batch_b(a, b) # ...x(N+M)
+        return grad[..., :len(x)], grad[..., len(x):]
+
+    def grad_qp_p_inverse(leaf_id):
+        p_inv = p.inv()
+        f = s.Sum(
+            s.Linear(dot, s.Grad(p, leaf_id), s.Leaf(x)),
+            s.Grad(q, leaf_id),
+            s.Linear(dot, s.Linear(lambda x: x.swapaxes(-1, -2), s.Grad(g, leaf_id)), s.Leaf(z))
+        ).compute()  # ...xN
+        if f is None:
+            f = zeros(leaf_shape(leaf_id) + x.shape)
+        k = (s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x))).compute()  # ...xM
+        if k is None:
+            k = zeros(leaf_shape(leaf_id) + z.shape)
+        a = diagflat(g.dot(x) - h) - z * g.dot(p_inv).dot(g.T)  # MxM
+        b = z * (k + f @ g.dot(p_inv).T)  # ...xM
+        grad_z = solve_batch_b(a, b)  # ...xM
+        grad_x = -grad_z @ g.dot(p_inv.T) - f.dot(p_inv.T)
+        return grad_x, grad_z
+
+    grad = {}
+    def set_grad(leaf_id):
+        nonlocal grad
+        if leaf_id not in grad:
+            try:
+                grad[leaf_id] = grad_qp_p_inverse(leaf_id)
+            except np.linalg.LinAlgError:
+                grad[leaf_id] = grad_qp_robust(leaf_id)
+
+    def grad_x(leaf_id):
+        # print(grad_x0(leaf_id))
+        # print(grad_qp_robust(leaf_id)[0])
+        # print(grad_qp_p_inverse(leaf_id)[0])
+        set_grad(leaf_id)
+        return grad[leaf_id][0]
 
     def grad_z(leaf_id):
-        c = z / (g.dot(x) - h)  # M
-        k = s.Grad(h, leaf_id) - s.Linear(dot, s.Grad(g, leaf_id), s.Leaf(x))  # ...xM
-        l = s.Linear(dot, s.Grad(x, leaf_id), s.Leaf(g.T))  # ...xM
-        return c * (k - l).compute()
+        set_grad(leaf_id)
+        return grad[leaf_id][1]
 
     x, z = (t.Tensor(np.array(res[name]).astype(p.dtype)[:, 0], grad, children=[p, q, g, h])
             for name, grad in [('x', grad_x), ('z', grad_z)])

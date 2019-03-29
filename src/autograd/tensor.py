@@ -77,7 +77,7 @@ class Tensor:
                 self.grad[leaf_id] = self.grad_fn(leaf_id)
             else:
                 # self.grad[leaf_id] = ops.leaf(np.zeros(())[(None,) * (ops.leaf_ndim(leaf_id) + self.ndim)])
-                self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape))
+                self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape, dtype=np.float32))
 
             if config['debug']:
                 # if self.grad[leaf_id].shape != self.grad_shape(leaf_id):
