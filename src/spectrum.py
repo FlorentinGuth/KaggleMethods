@@ -164,3 +164,44 @@ def k_spectra(X, Y=None, k=5, tqdm=False):
         kernel[i-1] = k_spectrum(X, Y=Y, k=i)
 
     return kernel
+
+
+def mismatch_permutations(k):
+    for pos in range(k):
+        for shift in range(3):
+            ind = np.arange(1 << (2 * k))
+            cur = (ind >> (2 * pos)) % 4
+            new = (cur + 1 + shift) % 4
+            yield ind + ((new - cur) << (2 * pos))
+
+
+def k_spectrum_mismatch(X, Y=None, k=2, decay=.5):
+    m = 4
+    k_grams_X = k_grams(X, k=k, m=m)
+    k_grams_Y = k_grams_X if Y is None else k_grams(Y, k=k, m=m)
+
+    for perm in mismatch_permutations(k):
+        k_grams_X += decay * k_grams_X[:, perm]
+        k_grams_Y += decay * k_grams_Y[:, perm]
+
+    norms_X = sparse.linalg.norm(k_grams_X, axis=1)
+    norms_Y = sparse.linalg.norm(k_grams_Y, axis=1)
+
+    K = k_grams_X.dot(k_grams_Y.T).toarray() / np.outer(norms_X, norms_Y)
+    return K
+
+
+def cum_mismatch(X, Y=None, k=5, tqdm=False, decay=.1):
+    """
+     Computes the sum of the spectrum kernels between X and Y, up to k.
+    """
+    shape = (len(X), len(X) if Y is None else len(Y))
+    kernel = np.zeros(shape)
+
+    for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
+        if 3 <= i <= 6:
+            kernel += k_spectrum_mismatch(X, Y=Y, k=i, decay=decay)
+        else:
+            kernel += k_spectrum(X, Y=Y, k=i)
+
+    return kernel / k
