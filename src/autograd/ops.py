@@ -380,7 +380,12 @@ def solve_batch(a, b):
     return x
 
 
-def qp(p, q, g, h, **kwargs):
+def qp(p, q, g=None, h=None, **kwargs):
+    if g is None:
+        g = zeros((0, p.shape[0]))
+    if h is None:
+        h = zeros(0)
+
     # TODO (but useless): implement a, b and y
     p, q, g, h = tensors(p, q, g, h)  # NxN, N, MxN, M
     res = cvxopt.solvers.qp(*map(lambda c: cvxopt.matrix(c.data.astype(np.float64)), (p, q, g, h)), **kwargs)

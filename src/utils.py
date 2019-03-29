@@ -48,12 +48,13 @@ def k_folds_indices(n, k):
     return folds
 
 
-def evaluate(classifier, K, Y, folds=5):
+def evaluate(classifier, K, Y, folds=5, repeats=1):
     """
     :param classifier: classifier to evaluate
     :param K: precomputed kernel matrix of shape (n_samples, n_samples)
     :param Y: training labels of shape (n_samples, )
     :param folds: number of folds to use
+    :param repeats: number of repetitions of the k-fold evaluation
 
     Evaluates the classifier using cross-validation.
     Returns the mean and std of the validation and train scores.:
@@ -63,13 +64,19 @@ def evaluate(classifier, K, Y, folds=5):
     N = len(K)
     valid_scores = []
     train_scores = []
-    for train_inds, valid_inds in k_folds_indices(N, folds):
-        classifier.fit(K[np.ix_(train_inds, train_inds)], Y[train_inds])
+    for i in range(repeats):
+        valid_score = 0
+        train_score = 0
+        for train_inds, valid_inds in k_folds_indices(N, folds):
+            classifier.fit(K[np.ix_(train_inds, train_inds)], Y[train_inds])
 
-        valid_scores.append((classifier.predict(K[np.ix_(
-            valid_inds, train_inds)]) == Y[valid_inds]).mean())
-        train_scores.append((classifier.predict(K[np.ix_(
-            train_inds, train_inds)]) == Y[train_inds]).mean())
+            valid_score += (classifier.predict(K[np.ix_(
+                valid_inds, train_inds)]) == Y[valid_inds]).sum()
+            train_score += (classifier.predict(K[np.ix_(
+                train_inds, train_inds)]) == Y[train_inds]).mean()
+
+        valid_scores.append(valid_score / N)
+        train_scores.append(train_score / folds)
 
     valid_scores = np.array(valid_scores)
     train_scores = np.array(train_scores)
@@ -77,7 +84,7 @@ def evaluate(classifier, K, Y, folds=5):
     return valid_scores.mean(), valid_scores.std(), train_scores.mean(), train_scores.std()
 
 
-def global_evaluate(classifier, Ks, Ys, Cs, folds=5, **params):
+def global_evaluate(classifier, Ks, Ys, Cs, folds=5, repeats=1, **params):
     """
     :param classifier: classifier to evaluate
     :param Ks: list precomputed kernel matrices of shape list(n_samples_i, n_samples_i)
@@ -88,12 +95,10 @@ def global_evaluate(classifier, Ks, Ys, Cs, folds=5, **params):
 
     Evaluates a classifier on several data sets, and averages the results.
     """
-    return np.mean(
-        np.array([
-            evaluate(classifier(C=C, **params), K, Y, folds)
+    return np.array([
+            evaluate(classifier(C=C, **params), K, Y, folds, repeats)
             for (K, Y, C) in zip(Ks, Ys, Cs)
-        ]),
-        axis=0)
+        ])
 
 
 def precomputed_kernels(kernel, name, numeric=True, **params):
