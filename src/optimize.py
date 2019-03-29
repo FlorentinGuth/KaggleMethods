@@ -32,7 +32,7 @@ class SVM(svm.SVC):
         return hinge(ag.tensor(y) * K.dot(self.alpha)).mean()
 
 
-def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1., iters=100):
+def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1., iters=100, verbose=True):
     """ Gradient descent on the kernel parameters and classifier hyper-parameters to optimize the validation loss.
     :param kernel: function from θ to kernel matrix (shape NxN)
     :param clf: classifier class to fit
@@ -42,13 +42,13 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1., iters=100):
     :param λ: the classifier hyper-parameters (1D array)
     :param β: learning rate
     :param iters: number of iterations to do
-    :param sub_sample: sub sampling
+    :param verbose: print steps
     :return: θ, λ, stats (list of (err_train, err_valid, acc_train, acc_valid))
     """
     p = len(θ)
     μ = ag.concatenate((θ, λ)).detach(requires_grad=True)
 
-    progress = tqdm.tqdm_notebook(range(iters))
+    progress = tqdm.tqdm(range(iters))
     stats = []
 
     def epoch():
@@ -87,7 +87,8 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1., iters=100):
         with ag.Config(grad=False):
             g = err_valid.compute_grad(μ.id)
             Δ = (-β * g).astype(np.float32)
-            print('Θ norm {:.1e}, err_train {:.1e}, err_valid {:.1e}, acc_train {:.0f}%, acc_valid {:.0f}%, g norm {:.2e}, Δ norm {:.2e}'
+            if verbose:
+                print('Θ norm {:.1e}, err_train {:.1e}, err_valid {:.1e}, acc_train {:.0f}%, acc_valid {:.0f}%, g norm {:.2e}, Δ norm {:.2e}'
                   .format(ag.test.norm(θ), err_train, err_valid, 100*acc_train, 100*acc_valid, ag.test.norm(g), ag.test.norm(Δ)))
         return (μ + Δ).detach()
 
