@@ -48,15 +48,42 @@ def local_alignment_kernel(weights, X, Y=None, tqdm=False, beta=0.5):
 
 def main():
     import utils
-    weights = np.ones(10, dtype=np.float32)
-    weights[:4] = 2
-    weights += 0.1 * np.random.random(10)
-    weights = ag.tensor(weights, requires_grad=True)
-    def test(f):
-        dists = f(weights, utils.load(k=0).astype(np.int)[:50], tqdm=True)
-        # print(dists, dists.compute_grad(weights.id))
-    test(levenshtein_distance)
-    test(levenshtein_distance_v2)
+    import optimize
+    import svm
+
+    dataset = 0
+
+    X = utils.load(k=dataset)
+
+    def levenshtein_kernel(params, I, J):
+        factors = ag.exp(params)
+        dists = levenshtein_distance_v2(factors[:10], X[I], X[J], tqdm=False)
+        scale = factors[10]
+        return ag.exp(- dists / (dists.mean() + 1e-3) * scale)
+
+    n = 100
+    num_folds = 2
+    θ = ag.zeros(11)
+    λ = ag.zeros(1)
+
+    θ, λ, stats = optimize.optimize(
+        kernel=levenshtein_kernel,
+        clf=optimize.SVM,
+        Y=utils.train_Ys[dataset].astype(float),
+        fold_generator=lambda: utils.k_folds_indices(len(X), num_folds, n)[:1],
+        θ=θ,
+        λ=λ,
+        β=2e1,
+        iters=50,
+    )
+    print(θ, λ)
+
+    print(utils.evaluate(
+        svm.SVC(C=np.exp(λ.data[0])),
+        levenshtein_kernel(θ, np.arange(len(X)), np.arange(len(X))).data,
+        utils.train_Ys[dataset],
+        folds=10
+    ))
 
 
 if __name__ == '__main__':

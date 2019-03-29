@@ -1,6 +1,7 @@
 import autograd as ag
 import tqdm
 import svm
+import numpy as np
 
 
 class KernelRidge:
@@ -31,7 +32,7 @@ class SVM(svm.SVC):
         return hinge(ag.tensor(y) * K.dot(self.alpha)).mean()
 
 
-def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
+def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1., iters=100):
     """ Gradient descent on the kernel parameters and classifier hyper-parameters to optimize the validation loss.
     :param kernel: function from θ to kernel matrix (shape NxN)
     :param clf: classifier class to fit
@@ -41,6 +42,7 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
     :param λ: the classifier hyper-parameters (1D array)
     :param β: learning rate
     :param iters: number of iterations to do
+    :param sub_sample: sub sampling
     :return: θ, λ, stats (list of (err_train, err_valid, acc_train, acc_valid))
     """
     p = len(θ)
@@ -51,7 +53,6 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
 
     def epoch():
         θ, λ = μ[:p], μ[p:]
-        K = kernel(θ)
         C = clf(λ)
 
         err_trains = []
@@ -64,14 +65,14 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
 
         for I_train, I_valid in fold_generator():
             Y_train = Y[I_train]
-            K_train = K[np.ix_(I_train, I_train)]
+            K_train = kernel(θ, I_train, I_train)
             C.fit(K_train, Y_train)
             err_train, acc_train = err_acc(K_train, Y_train)
             err_trains.append(err_train)
             acc_trains.append(acc_train)
 
             Y_valid = Y[I_valid]
-            K_valid = K[np.ix_(I_valid, I_train)]
+            K_valid = kernel(θ, I_valid, I_train)
             err_valid, acc_valid = err_acc(K_valid, Y_valid)
             err_valids.append(err_valid)
             acc_valids.append(acc_valid)
@@ -85,8 +86,7 @@ def optimize(kernel, clf, Y, fold_generator, θ, λ, β=1, iters=100):
 
         with ag.Config(grad=False):
             g = err_valid.compute_grad(μ.id)
-            Δ = -β * g
-            print(θ)
+            Δ = (-β * g).astype(np.float32)
             print('Θ norm {:.1e}, err_train {:.1e}, err_valid {:.1e}, acc_train {:.0f}%, acc_valid {:.0f}%, g norm {:.2e}, Δ norm {:.2e}'
                   .format(ag.test.norm(θ), err_train, err_valid, 100*acc_train, 100*acc_valid, ag.test.norm(g), ag.test.norm(Δ)))
         return (μ + Δ).detach()
@@ -116,8 +116,9 @@ if __name__ == '__main__':
         fake_K = np.ones((len(spectrum_K), len(spectrum_K)))
 
         K = ag.stack((spectrum_K, fake_K))
-        def spectrum_sum(θ):
-            return ag.tensordot(K, ag.exp(θ), axes=([0], [0]))
+
+        def spectrum_sum(θ, I, J):
+            return ag.tensordot(K[:, I][:, :, J], ag.exp(θ), axes=([0], [0]))
 
         n = 1000
         num_folds = 2

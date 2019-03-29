@@ -25,8 +25,9 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
     cdef np.ndarray[np.float32_t, ndim=2] grad_dists = np.empty((bs.shape[0], 10), dtype=np.float32)
 
     cdef int i, j, k
-    cdef np.ndarray[np.float32_t, ndim=1] values = np.empty(3, dtype=np.float32)
-    cdef int best_op
+    # cdef np.ndarray[np.float32_t, ndim=1] values = np.empty(3, dtype=np.float32)
+    cdef np.float32_t del_cost, ins_cost, sub_cost
+    # cdef int best_op
     for k in range(bs.shape[0]):
         prev_row[0] = 0
         grad_prev_row[0] = 0
@@ -40,23 +41,25 @@ def levenshtein_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.int_t,
             grad_cur_row[0, a[i]] += 1
 
             for j in range(l_b):
-                values[0] = prev_row[j + 1] + weights[a[i]]
-                values[1] = cur_row[j] + weights[bs[k, j]]
-                values[2] = prev_row[j] if a[i] == bs[k, j] else prev_row[j] + weights[sub_op[a[i], bs[k, j]]]
-                best_op = values.argmin()
+                del_cost = prev_row[j + 1] + weights[a[i]]
+                ins_cost = cur_row[j] + weights[bs[k, j]]
+                sub_cost = prev_row[j] if a[i] == bs[k, j] else prev_row[j] + weights[sub_op[a[i], bs[k, j]]]
 
-                cur_row[j + 1] = values[best_op]
-                if best_op == 0:
+                if del_cost < ins_cost and del_cost < sub_cost:
                     grad_cur_row[j + 1] = grad_prev_row[j + 1]
                     grad_cur_row[j + 1, a[i]] += 1
-                elif best_op == 1:
+                    cur_row[j + 1] = del_cost
+                elif ins_cost < sub_cost:
                     grad_cur_row[j + 1] = grad_cur_row[j]
                     grad_cur_row[j + 1, bs[k, j]] += 1
+                    cur_row[j + 1] = ins_cost
                 elif a[i] == bs[k, j]:
                     grad_cur_row[j + 1] = grad_prev_row[j]
+                    cur_row[j + 1] = sub_cost
                 else:
                     grad_cur_row[j + 1] = grad_prev_row[j]
                     grad_cur_row[j + 1, sub_op[a[i], bs[k, j]]] += 1
+                    cur_row[j + 1] = sub_cost
 
             cur_row, prev_row = prev_row, cur_row
             grad_cur_row, grad_prev_row = grad_prev_row, grad_cur_row
