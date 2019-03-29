@@ -125,6 +125,10 @@ class Tensor:
     def __len__(self):
         return self.shape[0]
 
+    def astype(self, dtype):
+        """ Warning, this removes gradients, as I'm too lazy to implement it and it makes no sense. """
+        return ops.leaf(self.data.astype(dtype))
+
     @property
     def T(self):
         return self.transpose()

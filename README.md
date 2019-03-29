@@ -2,7 +2,12 @@
 ## Better spectrum kernel
 - center kernel
 - do not normalize kernel? at least do it in a meaningful way
-- be robust to addition/deletion: mismatch kernel
+- standard spectrum kernel: no notion of mutations, O(l)
+- substring kernel: all sub-sequences (not continuous) but decays exponentially with number of gaps, O(kl²)
+- mismatch kernel: like spectrum but with m mismatches
+- levenshtein: on whole sequence, O(l²)
+- local alignment kernel: seems very similar to levenshtein, pd when taking exponential and summing over paths 
+(in practice take the log because the values vary too wildly, but not pd anymore), O(l²) as well
 ## SVMs
 - Squared hinge vs hinge
 - Crossval C: renormalize by 1/n

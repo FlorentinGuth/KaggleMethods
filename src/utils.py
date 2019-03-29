@@ -33,13 +33,15 @@ def shuffle(*arrays):
     return [a[indices] for a in arrays]
 
 
-def k_folds_indices(n, k):
+def k_folds_indices(n, k, subsample=None):
     """
      Return k pairs (train_inds, valid_inds) of arrays containing the training and validation indices for each split.
     """
-    assert (n % k == 0)
-    m = n // k
-    indices = np.random.permutation(n)
+    if subsample is None:
+        subsample = n
+    assert (subsample % k == 0)
+    m = subsample // k
+    indices = np.random.permutation(n)[:subsample]
 
     folds = []
     for i in range(k):
@@ -122,7 +124,7 @@ def precomputed_kernels(kernel, name, numeric=True, **params):
         test_Xs = [load(k=k, train=False, numeric=numeric) for k in range(n_datasets)]
 
         with Executor(max_workers=6) as executor:
-            train_futures = [executor.submit(kernel, train_X, train_X, **params) for train_X in train_Xs]
+            train_futures = [executor.submit(kernel, train_X, **params) for train_X in train_Xs]
             test_futures = [executor.submit(kernel, test_X, train_X, **params) for (test_X, train_X) in zip(test_Xs, train_Xs)]
             train_Ks = [future.result() for future in train_futures]
             test_Ks = [future.result() for future in test_futures]
