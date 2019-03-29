@@ -16,22 +16,22 @@ class SVC:
 
     def fit(self, k, y):
         n = k.shape[0]
-        y = y.astype(np.float) * 2 - 1
+        y = y.astype(np.float32) * 2 - 1
         k, y = ag.tensors(k, y)
 
         if self.loss == 'hinge':
             self.alpha, _ = ag.qp(
                 k,
                 -y,
-                ag.concatenate((np.diag(y.data), -np.diag(y.data))),
-                ag.concatenate((self.C * np.ones(n), np.zeros(n))),
+                ag.concatenate((ag.diagflat(y), -ag.diagflat(y))),
+                ag.concatenate((self.C * ag.ones(n), ag.zeros(n))),
                 options=dict(show_progress=False)
             )
         elif self.loss == 'squared_hinge':
             self.alpha, _ = ag.qp(
                 k + ag.eye(n) / (2 * self.C),
                 -y,
-                -np.diag(y.data),
+                -ag.diagflat(y),
                 ag.zeros(n),
                 options=dict(show_progress=False)
             )

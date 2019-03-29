@@ -7,11 +7,11 @@ import multiprocessing
 
 
 def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
-    X = ag.tensor(X).astype(np.int)
+    X = ag.tensor(X.astype(np.int))
     if Y is None:
         Y = X
     else:
-        Y = ag.tensor(Y).astype(np.int)
+        Y = ag.tensor(Y.astype(np.int))
     weights = ag.tensor(weights)
 
     Ys = [Y[i:].data for i in range(len(X))]
@@ -47,6 +47,9 @@ def local_alignment_kernel(X, Y=None, weights=None, tqdm=False, beta=0.5):
 
 
 def main():
+    import os
+    if not os.path.exists('data'):
+        os.chdir('..')
     import utils
     import optimize
     import svm
@@ -56,9 +59,9 @@ def main():
         X = utils.load(k=dataset)
         spec_k = utils.precomputed_kernels(None, 'cum_spectrum_31')[0][dataset]
 
-        def levenshtein_kernel_diff(params, I, J):
+        def levenshtein_kernel_diff(params, I):
             factors = ag.exp(params)
-            dists = levenshtein_distance_v2(X[I], X[J], weights=factors[:10], tqdm=False)
+            dists = levenshtein_distance_v2(X[I], X[I], weights=factors[:10], tqdm=False)
             scale = factors[10]
             return ag.exp(- dists / (dists.mean() + 1e-3) * scale) + factors[11] * spec_k[I][:, J]
 
@@ -70,8 +73,9 @@ def main():
         θ, λ, stats = optimize.optimize(
             kernel=levenshtein_kernel_diff,
             clf=optimize.KernelRidge,
-            Y=utils.train_Ys[dataset].astype(float),
-            fold_generator=lambda: utils.k_folds_indices(len(X), num_folds, n)[:1],
+            Y=utils.train_Ys[dataset],
+            indices=lambda: np.random.permutation(len(X))[:n],
+            fold_generator=lambda p: utils.k_folds_indices(p, num_folds)[:1],
             θ=θ,
             λ=λ,
             β=1e0,

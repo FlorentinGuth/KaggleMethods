@@ -499,7 +499,7 @@ def mean(a, axis=None):
     def grad_mean(leaf_id):
         return mean(a.compute_grad(leaf_id), a.grad_axes(axis))
 
-    return t.Tensor(np.mean(a.data, axis), grad_mean, children=[a])
+    return t.Tensor(np.mean(a.data.astype(np.float32), axis), grad_mean, children=[a])
 
 
 def exp(a):
