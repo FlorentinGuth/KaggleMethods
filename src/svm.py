@@ -2,7 +2,7 @@ import sys
 import autograd as ag
 import numpy as np
 import cvxopt
-from coordinate import coordinate_descent
+from native_utils import coordinate_descent
 
 
 class SVC:
