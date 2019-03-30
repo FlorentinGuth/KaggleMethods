@@ -103,11 +103,12 @@ def global_evaluate(classifier, Ks, Ys, Cs, folds=5, repeats=1, **params):
         ])
 
 
-def precomputed_kernels(kernel, name, numeric=True, **params):
+def precomputed_kernels(kernel, name, numeric=True, max_workers=6, **params):
     """
     :param kernel: a function k(X, Y) that computes the kernels
     :param name: a unique name to represent the kernel
     :param numeric whether to load that data as numbers or strings
+    :param max_workers parallel workers
     :param params kernel parameters
     :return a (train_Ks, test_Ks) tuple with kernels for all train and test datasets
     """
@@ -123,7 +124,7 @@ def precomputed_kernels(kernel, name, numeric=True, **params):
         train_Xs = [load(k=k, numeric=numeric) for k in range(n_datasets)]
         test_Xs = [load(k=k, train=False, numeric=numeric) for k in range(n_datasets)]
 
-        with Executor(max_workers=6) as executor:
+        with Executor(max_workers=max_workers) as executor:
             train_futures = [executor.submit(kernel, train_X, **params) for train_X in train_Xs]
             test_futures = [executor.submit(kernel, test_X, train_X, **params) for (test_X, train_X) in zip(test_Xs, train_Xs)]
             train_Ks = [future.result() for future in train_futures]
