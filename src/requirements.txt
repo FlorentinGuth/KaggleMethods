@@ -1,5 +1,0 @@
-numpy==1.16.2
-cython==0.29.6
-tqdm==4.31.1
-scipy==1.2.1
-cvxopt==1.2.0
