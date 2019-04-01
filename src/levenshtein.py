@@ -1,3 +1,4 @@
+import data
 import native_utils
 import autograd as ag
 from tqdm import tqdm as tqdm_notebook
@@ -5,7 +6,7 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor as Executor
 import multiprocessing
 
-from utils import transform_kernels, precomputed_kernels
+from data import precomputed_kernels, transform_kernels
 
 
 def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
@@ -73,14 +74,14 @@ def main():
     import os
     if not os.path.exists('data'):
         os.chdir('..')
-    import utils
+    import evaluation
     import optimize
     import svm
 
     for dataset in [0, 1, 2]:
         print('DATASET={}'.format(dataset))
-        X = utils.load(k=dataset)
-        spec_k = utils.precomputed_kernels(None, 'cum_spectrum_31')[0][dataset]
+        X = data.load(k=dataset)
+        spec_k = data.precomputed_kernels(None, 'cum_spectrum_31')[0][dataset]
 
         def levenshtein_kernel_diff(params, I):
             factors = ag.exp(params)
@@ -96,9 +97,9 @@ def main():
         θ, λ, stats = optimize.optimize(
             kernel=levenshtein_kernel_diff,
             clf=optimize.KernelRidge,
-            Y=utils.train_Ys[dataset],
+            Y=data.train_Ys[dataset],
             indices=lambda: np.random.permutation(len(X))[:n],
-            folds=lambda p: utils.k_folds_indices(p, num_folds),
+            folds=lambda p: data.k_folds_indices(p, num_folds),
             θ=θ,
             λ=λ,
             β=1e2,
@@ -109,10 +110,10 @@ def main():
 
         K = levenshtein_kernel_diff(θ, np.arange(len(X))).data
         for _ in range(3):
-            print(utils.evaluate(
+            print(evaluation.evaluate(
                 svm.SVC(C=10),
                 K,
-                utils.train_Ys[dataset],
+                data.train_Ys[dataset],
                 folds=20
             ))
 

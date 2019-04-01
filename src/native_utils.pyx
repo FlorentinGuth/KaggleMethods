@@ -311,6 +311,15 @@ def local_alignment_one_vs_many(np.ndarray[np.int_t, ndim=1] a, np.ndarray[np.in
 @cython.wraparound(False)
 def coordinate_descent(np.ndarray[np.float32_t, ndim=2] k, np.ndarray[np.int_t, ndim=1] y,
                        float C=1., int n_iter=1000, float tol=1e-3, str loss='hinge'):
+    """
+    :param k: kernel matrix
+    :param y: labels (0-1 array)
+    :param C: regularization parameter of the SVM
+    :param n_iter: number of iterations over all the coordinates
+    :param tol: target error tolerance
+    :param loss: type of loss, can be either 'hinge' or 'squared_hinge'.
+    :return: alpha, solution of the dual quadratic problem.
+    """
     cdef int n = k.shape[0]
     cdef np.ndarray[np.float32_t, ndim=2] k_C = k
     cdef np.ndarray[np.float32_t, ndim=1] alpha = np.zeros(n, dtype=np.float32)

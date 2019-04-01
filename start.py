@@ -9,7 +9,9 @@ from tqdm import tqdm
 import svm
 from levenshtein import edit_kernel
 from spectrum import k_spectrum_mismatch, k_spectrum
-from utils import precomputed_kernels, svm_kernels, transform_kernels
+from evaluation import svm_kernels
+from data import precomputed_kernels, transform_kernels
+
 
 # TODO: CYTHON setup.py?
 # TODO: README?

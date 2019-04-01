@@ -5,45 +5,43 @@ import cvxopt
 from native_utils import coordinate_descent
 
 
-class SVC:
-    def __init__(self, kernel='precomputed', C=1, loss='hinge'):
+class SVCCoordinate:
+    """
+     Kernel Support Vector Classifier, using Coordinate Descent on the dual, with random scan order.
+     Accept either 'hinge' or 'squared_hinge' loss.
+     Can fit an intercept, by adding the specified intercept value to the kernel entries.
+
+     N.B. Faster than using cvxopt, but less accurate.
+    """
+    def __init__(self, kernel='precomputed', C=1, loss='hinge', intercept=0, **params):
         assert kernel == 'precomputed'
-        self.C = ag.tensor(C)
+        self.C = C
         self.alpha = None
-        self.loss_ = loss
+        self.loss = loss
+        self.params = params
+        self.intercept = intercept
+
         if loss not in ('hinge', 'squared_hinge'):
             raise ValueError("Unknown loss: {}.".format(loss))
 
     def fit(self, k, y):
-        n = k.shape[0]
-        y = y.astype(np.float32) * 2 - 1
-        k, y = ag.tensors(k, y)
-
-        if self.loss_ == 'hinge':
-            self.alpha, _ = ag.qp(
-                k,
-                -y,
-                ag.concatenate((ag.diagflat(y), -ag.diagflat(y))),
-                ag.concatenate((self.C * ag.ones(n), ag.zeros(n))),
-                options=dict(show_progress=False)
-            )
-        elif self.loss_ == 'squared_hinge':
-            self.alpha, _ = ag.qp(
-                k + ag.eye(n) / (2 * self.C),
-                -y,
-                -ag.diagflat(y),
-                ag.zeros(n),
-                options=dict(show_progress=False)
-            )
-
+        self.alpha = coordinate_descent(k=(k+self.intercept).astype(np.float32), y=y.astype(np.int),
+                                        C=float(self.C), loss=self.loss, **self.params)
         return self
 
     def predict(self, k):
-        k = ag.tensor(k)
+        k = ag.tensor(k+self.intercept)
         return k.dot(self.alpha).data >= 0.
 
 
 class SVCIntercept:
+    """
+     Kernel Support Vector Classifier, using cvxopt to solve the dual quadratic problem.
+     Accept either 'hinge' or 'squared_hinge' loss.
+     Can fit an intercept, without penalization. The intercept b is computed from the KKT conditions.
+
+     N.B. Much slower than using coordinate descent, but more accurate.
+    """
     def __init__(self, kernel='precomputed', C=1, loss='hinge'):
         assert kernel == 'precomputed'
         self.C = C
@@ -102,23 +100,45 @@ class SVCIntercept:
         return k.dot(self.alpha) + self.intercept >= 0.
 
 
-class SVCCoordinate:
-    def __init__(self, kernel='precomputed', C=1, loss='hinge', intercept=0, **params):
+class SVC:
+    """
+     Kernel Support Vector Classifier, with gradients and tensors.
+     It uses cvxopt to solve the dual quadratic problem.
+     Accept either 'hinge' or 'squared_hinge' loss.
+     Does not support intercept.
+    """
+    def __init__(self, kernel='precomputed', C=1, loss='hinge'):
         assert kernel == 'precomputed'
-        self.C = C
+        self.C = ag.tensor(C)
         self.alpha = None
-        self.loss = loss
-        self.params = params
-        self.intercept = intercept
-
+        self.loss_ = loss
         if loss not in ('hinge', 'squared_hinge'):
             raise ValueError("Unknown loss: {}.".format(loss))
 
     def fit(self, k, y):
-        self.alpha = coordinate_descent(k=(k+self.intercept).astype(np.float32), y=y.astype(np.int),
-                                        C=float(self.C), loss=self.loss, **self.params)
+        n = k.shape[0]
+        y = y.astype(np.float32) * 2 - 1
+        k, y = ag.tensors(k, y)
+
+        if self.loss_ == 'hinge':
+            self.alpha, _ = ag.qp(
+                k,
+                -y,
+                ag.concatenate((ag.diagflat(y), -ag.diagflat(y))),
+                ag.concatenate((self.C * ag.ones(n), ag.zeros(n))),
+                options=dict(show_progress=False)
+            )
+        elif self.loss_ == 'squared_hinge':
+            self.alpha, _ = ag.qp(
+                k + ag.eye(n) / (2 * self.C),
+                -y,
+                -ag.diagflat(y),
+                ag.zeros(n),
+                options=dict(show_progress=False)
+            )
+
         return self
 
     def predict(self, k):
-        k = ag.tensor(k+self.intercept)
+        k = ag.tensor(k)
         return k.dot(self.alpha).data >= 0.

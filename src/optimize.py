@@ -1,7 +1,8 @@
 import autograd as ag
 import tqdm
 import svm
-import numpy as np
+
+from data import precomputed_kernels
 
 
 class KernelRidge:
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     if not os.path.exists('data'):
         os.chdir('..')
     from spectrum import *
-    from utils import *
+    from evaluation import *
 
     def run():
         spectrum_kernels = []
