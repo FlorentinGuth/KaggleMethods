@@ -39,7 +39,7 @@ def rolling_window(a, window):
         raise ValueError("`window` is too long.")
 
     shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
-    strides = a.strides + (a.strides[-1], )
+    strides = a.strides + (a.strides[-1],)
 
     return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
@@ -78,26 +78,44 @@ def sparse_prod(a, b, n, m):
     return kernel
 
 
+def sparse_norm(a, n):
+    inds_a, counts_a = a
+
+    norms2 = np.zeros(n)
+
+    for (i, x), count in zip(inds_a, counts_a):
+        norms2[int(x)] += count * count
+
+    return np.sqrt(norms2)
+
+
 def k_grams(X, k=2, m=4, ret_inds=False):
     N, L = X.shape
 
-    encoding = (m ** np.arange(k, dtype=np.uint64)).astype(np.uint64)
+    X = X.astype(np.int32)
+
+    dtype = np.uint64 if not ret_inds else object
+    encoding = m ** np.arange(k, dtype=dtype)
+    assert(encoding.dtype == dtype)
 
     k_grams_indices = rolling_window(X, window=k).dot(encoding)
 
     xs = np.repeat(np.arange(N), repeats=k_grams_indices.shape[1])
     ys = k_grams_indices.reshape(-1)
 
+    if ret_inds:
+        zs = np.empty(len(ys), dtype=object)
+        for i, (x, y) in enumerate(zip(xs, ys)):
+            zs[i] = (y, x)
+        inds, counts = np.unique(zs, return_counts=True)
+        return inds, counts
+
     inds = np.stack((xs, ys), axis=1)
     inds, counts = np.unique(inds, axis=0, return_counts=True)
 
-    res = sparse.csr_matrix((counts, (inds[:, 0], inds[:, 1])),
-                            shape=(N, m**k),
-                            dtype=int)
-    if ret_inds:
-        return res, np.unique(
-            np.stack((ys, xs), axis=1), axis=0, return_counts=True)
-    return res
+    return sparse.csr_matrix((counts, (inds[:, 0], inds[:, 1])),
+                             shape=(N, m ** k),
+                             dtype=int)
 
 
 def k_spectrum(X, Y=None, k=2, m=4):
@@ -123,17 +141,15 @@ def k_spectrum(X, Y=None, k=2, m=4):
 
 
 def k_spectrum_extreme(X, Y=None, k=2, m=4):
-    k_grams_X, k_grams_inds_X = k_grams(X, k=k, m=m, ret_inds=True)
-    k_grams_Y, k_grams_inds_Y = (k_grams_X,
-                                 k_grams_inds_X) if Y is None else k_grams(
-                                     Y, k=k, m=m, ret_inds=True)
+    k_grams_inds_X = k_grams(X, k=k, m=m, ret_inds=True)
+    k_grams_inds_Y = k_grams_inds_X if Y is None else k_grams(
+        Y, k=k, m=m, ret_inds=True)
 
     K = sparse_prod(k_grams_inds_X, k_grams_inds_Y, len(X),
                     len(X) if Y is None else len(Y))
 
-    # TODO: Normalization? Centering?
-    norms_X = sparse.linalg.norm(k_grams_X, axis=1)
-    norms_Y = sparse.linalg.norm(k_grams_Y, axis=1)
+    norms_X = sparse_norm(k_grams_inds_X, len(X))
+    norms_Y = norms_X if Y is None else sparse_norm(k_grams_inds_Y, len(Y))
 
     K /= np.outer(norms_X, norms_Y)
 
@@ -161,7 +177,7 @@ def k_spectra(X, Y=None, k=5, tqdm=False):
     kernel = np.zeros((k,) + shape)
 
     for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
-        kernel[i-1] = k_spectrum(X, Y=Y, k=i)
+        kernel[i - 1] = k_spectrum(X, Y=Y, k=i)
 
     return kernel
 
@@ -175,19 +191,22 @@ def mismatch_permutations(k):
             yield ind + ((new - cur) << (2 * pos))
 
 
-def k_spectrum_mismatch(X, Y=None, k=2, decay=.5):
+def k_spectrum_mismatch(X, Y=None, k=2, decay=1):
     m = 4
     k_grams_X = k_grams(X, k=k, m=m)
     k_grams_Y = k_grams_X if Y is None else k_grams(Y, k=k, m=m)
 
+    k_grams_X_mis = k_grams_X.copy()
+    k_grams_Y_mis = k_grams_Y.copy()
+
     for perm in mismatch_permutations(k):
-        k_grams_X += decay * k_grams_X[:, perm]
-        k_grams_Y += decay * k_grams_Y[:, perm]
+        k_grams_X_mis += decay * k_grams_X[:, perm]
+        k_grams_Y_mis += decay * k_grams_Y[:, perm]
 
-    norms_X = sparse.linalg.norm(k_grams_X, axis=1)
-    norms_Y = sparse.linalg.norm(k_grams_Y, axis=1)
+    norms_X = sparse.linalg.norm(k_grams_X_mis, axis=1)
+    norms_Y = sparse.linalg.norm(k_grams_Y_mis, axis=1)
 
-    K = k_grams_X.dot(k_grams_Y.T).toarray() / np.outer(norms_X, norms_Y)
+    K = k_grams_X_mis.dot(k_grams_Y_mis.T).toarray() / np.outer(norms_X, norms_Y)
     return K
 
 
@@ -199,7 +218,7 @@ def cum_mismatch(X, Y=None, k=5, tqdm=False, decay=.1):
     kernel = np.zeros(shape)
 
     for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
-        if 3 <= i <= 6:
+        if 3 <= i <= 9:
             kernel += k_spectrum_mismatch(X, Y=Y, k=i, decay=decay)
         else:
             kernel += k_spectrum(X, Y=Y, k=i)
