@@ -149,7 +149,7 @@ def transform_kernels(kernels, transform, **params):
     )
 
 
-def grid_search(model, params, K, Y, folds=5, no_perfect=False):
+def grid_search(model, params, K, Y, folds=5, repeats=1, no_perfect=False):
     """
     :param model: a function that instantiates a model given parameters from params
     :param params: list of parameters to try
@@ -162,7 +162,7 @@ def grid_search(model, params, K, Y, folds=5, no_perfect=False):
     """
     results = []
     for p in params:
-        results.append(np.array(evaluate(model(**p), K, Y, folds=folds)))
+        results.append(np.array(evaluate(model(**p), K, Y, folds=folds, repeats=repeats)))
 
     results = np.array(results)
     if no_perfect:
@@ -170,7 +170,7 @@ def grid_search(model, params, K, Y, folds=5, no_perfect=False):
         p = params[np.argmax(results[non_perfect][:, 0] - results[non_perfect][:, 1])]
     else:
         p = params[np.argmax(results[:, 0] - results[:, 1])]
-    return p, np.array(evaluate(model(**p), K, Y, folds=20))
+    return p, np.array(evaluate(model(**p), K, Y, folds=20, repeats=repeats))
 
 
 def final_train(model, p, K_train, Y_train, K_test):
@@ -201,24 +201,31 @@ def save_predictions(predictions, file):
                header='Id,Bound', comments='', fmt='%d', delimiter=',')
 
 
-def svm_kernels(kernels, prediction_file=None):
+def svm_kernels(kernels, model, Cs=10. ** np.arange(-3, 4), prediction_file=None, repeats=1, **params):
     train_Ks, test_Ks = kernels
 
-    model = svm.SVC
-    params = [dict(kernel='precomputed', C=C) for C in 2. ** np.arange(0, 10)]
+    params = [dict(C=C, **params) for C in Cs]
     total_perf = np.zeros(4)
-    predictions = []
-    for K, Y, K_test in zip(train_Ks, train_Ys, test_Ks):
-        p, performance = grid_search(model, params, K, Y)
+    full_results = []
+
+    with Executor(max_workers=3) as executor:
+        futures = [executor.submit(grid_search, model, params, K, Y, repeats=repeats) for K, Y in
+                   zip(train_Ks, train_Ys)]
+        res = [future.result() for future in futures]
+
+    for p, performance in res:
         total_perf += performance
         percentages = tuple(100 * performance)
         print('dataset: Validation {:.2f} ± {:.2f}\t Train {:.2f} ± {:.2f}\t C={:.0e}'.format(*percentages, p['C']))
+        full_results.append(performance)
 
-        if prediction_file is not None:
-            predictions.append(final_train(model, p, K, Y, K_test))
+    if prediction_file is not None:
+        with Executor(max_workers=3) as executor:
+            futures = [executor.submit(final_train, model, p, K, Y, K_test) for K, Y, K_test, (p, _) in
+                       zip(train_Ks, train_Ys, test_Ks, res)]
+            predictions = [future.result() for future in futures]
+        save_predictions(predictions, prediction_file)
 
     total_percentages = 100 * total_perf / 3
     print('total:   Validation {:.2f} ± {:.2f}\t Train {:.2f} ± {:.2f}\t'.format(*total_percentages))
-
-    if prediction_file is not None:
-        save_predictions(predictions, prediction_file)
+    return full_results
