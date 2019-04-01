@@ -1,7 +1,6 @@
 import numpy as np
 from scipy import sparse
 import scipy.sparse.linalg
-from tqdm import tqdm_notebook
 
 
 def rolling_window(a, window):
@@ -45,6 +44,14 @@ def rolling_window(a, window):
 
 
 def sparse_prod(a, b, n, m):
+    """
+    Computes K = A.T.dot(B) from sparse representations a, b of A and B.
+    :param a: indices and values from matrix a
+    :param b: indices and values from matrix b
+    :param n: size of second axis of input matrix a
+    :param m: size of second axis of input matrix b
+    :return: the matrix K = a.T.dot(b)
+    """
     inds_a, counts_a = a
     inds_b, counts_b = b
 
@@ -79,6 +86,12 @@ def sparse_prod(a, b, n, m):
 
 
 def sparse_norm(a, n):
+    """
+    Computes the norm of each column of the matrix A from sparse representation a of A.
+    :param a: indices and values of matrix a
+    :param n: size of second axis of matrix a
+    :return: norm of the columns of A.
+    """
     inds_a, counts_a = a
 
     norms2 = np.zeros(n)
@@ -90,6 +103,14 @@ def sparse_norm(a, n):
 
 
 def k_grams(X, k=2, m=4, ret_inds=False):
+    """
+    :param X: matrix of size (N, L) containing N sequences of L integers
+    :param k: size of the k-grams to extract
+    :param m: size of the alphabet
+    :param ret_inds: to return sparse representation of the matrix
+    :return: sparse matrix of size (N, m ** k) containing counts of k-grams.
+    """
+
     N, L = X.shape
 
     X = X.astype(np.int32)
@@ -123,7 +144,8 @@ def k_spectrum(X, Y=None, k=2, m=4):
      Computes the k-spectrum kernel between the sequences from X and Y.
      If Y is None, computes the k-spectrum between sequences from X.
 
-     NB: 'normalizes' the kernel, but does not center it.
+     NB: 'normalizes' the kernel.
+     NB: for k > 12, it uses `k_spectrum_extreme`.
     """
     if k > 13:
         return k_spectrum_extreme(X, Y, k, m)
@@ -131,7 +153,6 @@ def k_spectrum(X, Y=None, k=2, m=4):
     k_grams_X = k_grams(X, k=k, m=m)
     k_grams_Y = k_grams_X if Y is None else k_grams(Y, k=k, m=m)
 
-    # TODO: Normalization? Centering?
     norms_X = sparse.linalg.norm(k_grams_X, axis=1)
     norms_Y = sparse.linalg.norm(k_grams_Y, axis=1)
 
@@ -141,6 +162,10 @@ def k_spectrum(X, Y=None, k=2, m=4):
 
 
 def k_spectrum_extreme(X, Y=None, k=2, m=4):
+    """
+     Computes the k-spectrum kernel between X and Y, just as `k_spectrum`,
+     using only sparse representations of the matrices.
+    """
     k_grams_inds_X = k_grams(X, k=k, m=m, ret_inds=True)
     k_grams_inds_Y = k_grams_inds_X if Y is None else k_grams(
         Y, k=k, m=m, ret_inds=True)
@@ -156,33 +181,11 @@ def k_spectrum_extreme(X, Y=None, k=2, m=4):
     return K
 
 
-def cum_spectrum(X, Y=None, k=5, tqdm=False):
-    """
-     Computes the sum of the spectrum kernels between X and Y, up to k.
-    """
-    shape = (len(X), len(X) if Y is None else len(Y))
-    kernel = np.zeros(shape)
-
-    for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
-        kernel += k_spectrum(X, Y=Y, k=i)
-
-    return kernel / k
-
-
-def k_spectra(X, Y=None, k=5, tqdm=False):
-    """
-     Computes the spectrum kernels between X and Y, up to k.
-    """
-    shape = (len(X), len(X) if Y is None else len(Y))
-    kernel = np.zeros((k,) + shape)
-
-    for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
-        kernel[i - 1] = k_spectrum(X, Y=Y, k=i)
-
-    return kernel
-
-
 def mismatch_permutations(k):
+    """
+     Computes an iterator over all possible modifications of the k-grams with one mismatch.
+     Each returned element is an array P such that k-gram P[i] has exactly one mismatch with k-gram i.
+    """
     for pos in range(k):
         for shift in range(3):
             ind = np.arange(1 << (2 * k))
@@ -192,6 +195,10 @@ def mismatch_permutations(k):
 
 
 def k_spectrum_mismatch(X, Y=None, k=2, decay=1):
+    """
+     Computes the (k, 1)-mismatch kernel between the sequences from X and Y.
+     If Y is None, computes the kernel between sequences from X.
+    """
     m = 4
     k_grams_X = k_grams(X, k=k, m=m)
     k_grams_Y = k_grams_X if Y is None else k_grams(Y, k=k, m=m)
@@ -209,18 +216,3 @@ def k_spectrum_mismatch(X, Y=None, k=2, decay=1):
     K = k_grams_X_mis.dot(k_grams_Y_mis.T).toarray() / np.outer(norms_X, norms_Y)
     return K
 
-
-def cum_mismatch(X, Y=None, k=5, tqdm=False, decay=.1):
-    """
-     Computes the sum of the spectrum kernels between X and Y, up to k.
-    """
-    shape = (len(X), len(X) if Y is None else len(Y))
-    kernel = np.zeros(shape)
-
-    for i in (tqdm_notebook(range(1, k + 1)) if tqdm else range(1, k + 1)):
-        if 3 <= i <= 9:
-            kernel += k_spectrum_mismatch(X, Y=Y, k=i, decay=decay)
-        else:
-            kernel += k_spectrum(X, Y=Y, k=i)
-
-    return kernel / k
