@@ -77,16 +77,19 @@ class Tensor:
                 self.grad[leaf_id] = self.grad_fn(leaf_id)
             else:
                 # self.grad[leaf_id] = ops.leaf(np.zeros(())[(None,) * (ops.leaf_ndim(leaf_id) + self.ndim)])
-                self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape))
+                self.grad[leaf_id] = ops.leaf(np.zeros(ops.leaf_shape(leaf_id) + self.shape, dtype=np.float32))
 
             if config['debug']:
+                if self.grad[leaf_id].dtype != np.float32:
+                    raise ValueError('non float32 gradient (culprit is {})'.format(self.grad_fn.__name__))
+
                 # if self.grad[leaf_id].shape != self.grad_shape(leaf_id):
                 #     raise ValueError('shape mismatch: gradient of {} wrt {} is {} (culprit is {})'
                 #                      .format(self.shape, ops.leaf_shape(leaf_id),
                 #                              self.grad[leaf_id].shape, self.grad_fn.__name__))
 
                 if self.grad[leaf_id].data.max() != self.grad[leaf_id].data.max():
-                    raise ValueError('NaNs in gradient (culprit is {}'.format(self.grad_fn.__name__))
+                    raise ValueError('NaNs in gradient (culprit is {})'.format(self.grad_fn.__name__))
 
         return self.grad[leaf_id]
 

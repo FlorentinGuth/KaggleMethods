@@ -7,14 +7,15 @@ import multiprocessing
 
 
 def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
-    X = ag.tensor(X).astype(np.int)
+    X = ag.tensor(X.astype(np.int))
     if Y is None:
         Y = X
+        Ys = [Y[i:].data for i in range(len(X))]
     else:
-        Y = ag.tensor(Y).astype(np.int)
+        Y = ag.tensor(Y.astype(np.int))
+        Ys = [Y.data for i in range(len(X))]
     weights = ag.tensor(weights)
 
-    Ys = [Y[i:].data for i in range(len(X))]
     d = np.zeros((len(X), len(Y)), dtype=np.float32)
     g = np.empty((len(weights), len(X), len(Y)), dtype=np.float32)
     with Executor(max_workers=multiprocessing.cpu_count()) as executor:
@@ -22,12 +23,17 @@ def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
         if tqdm:
             iterator = tqdm_notebook(iterator, total=len(X))
         for i, (row, grad_row) in iterator:
-            d[i, i:] = row
-            d[i, :i] = d[:i, i]
-            g[:, i, i:] = grad_row
-            g[:, i, :i] = g[:, :i, i]
+            if len(row) < len(X):
+                d[i, i:] = row
+                d[i, :i] = d[:i, i]
+                g[:, i, i:] = grad_row
+                g[:, i, :i] = g[:, :i, i]
+            else:
+                d[i] = row
+                g[:, i] = grad_row
 
     g_tensor = ag.Tensor(g, None, children=[])
+
     def grad_d(leaf_id):
         return ag.tensordot(weights.compute_grad(leaf_id), g_tensor, axes=([-1], [0]))
 
@@ -47,6 +53,9 @@ def local_alignment_kernel(X, Y=None, weights=None, tqdm=False, beta=0.5):
 
 
 def main():
+    import os
+    if not os.path.exists('data'):
+        os.chdir('..')
     import utils
     import optimize
     import svm
@@ -56,13 +65,13 @@ def main():
         X = utils.load(k=dataset)
         spec_k = utils.precomputed_kernels(None, 'cum_spectrum_31')[0][dataset]
 
-        def levenshtein_kernel_diff(params, I, J):
+        def levenshtein_kernel_diff(params, I):
             factors = ag.exp(params)
-            dists = levenshtein_distance_v2(X[I], X[J], weights=factors[:10], tqdm=False)
+            dists = levenshtein_distance_v2(X[I], X[I], weights=factors[:10], tqdm=False)
             scale = factors[10]
-            return ag.exp(- dists / (dists.mean() + 1e-3) * scale) + factors[11] * spec_k[I][:, J]
+            return ag.exp(- dists / (dists.mean() + 1e-3) * scale) + factors[11] * spec_k[I][:, I].astype(np.float32)
 
-        n = 64
+        n = 512
         num_folds = 2
         θ = ag.zeros(12)
         λ = ag.zeros(1)
@@ -70,35 +79,25 @@ def main():
         θ, λ, stats = optimize.optimize(
             kernel=levenshtein_kernel_diff,
             clf=optimize.KernelRidge,
-            Y=utils.train_Ys[dataset].astype(float),
-            fold_generator=lambda: utils.k_folds_indices(len(X), num_folds, n)[:1],
+            Y=utils.train_Ys[dataset],
+            indices=lambda: np.random.permutation(len(X))[:n],
+            folds=lambda p: utils.k_folds_indices(p, num_folds),
             θ=θ,
             λ=λ,
-            β=1e0,
-            iters=500,
+            β=1e2,
+            iters=50,
             verbose=False,
         )
         print(θ, λ)
 
-        K = levenshtein_kernel_diff(θ, np.arange(len(X)), np.arange(len(X))).data
-        print(utils.evaluate(
-            svm.SVC(C=np.exp(λ.data[0])),
-            K,
-            utils.train_Ys[dataset],
-            folds=20
-        ))
-        print(utils.evaluate(
-            svm.SVC(C=np.exp(λ.data[0])),
-            K,
-            utils.train_Ys[dataset],
-            folds=20
-        ))
-        print(utils.evaluate(
-            svm.SVC(C=np.exp(λ.data[0])),
-            K,
-            utils.train_Ys[dataset],
-            folds=20
-        ))
+        K = levenshtein_kernel_diff(θ, np.arange(len(X))).data
+        for _ in range(3):
+            print(utils.evaluate(
+                svm.SVC(C=10),
+                K,
+                utils.train_Ys[dataset],
+                folds=20
+            ))
 
 
 if __name__ == '__main__':
