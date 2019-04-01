@@ -103,21 +103,22 @@ class SVCIntercept:
 
 
 class SVCCoordinate:
-    def __init__(self, kernel='precomputed', C=1, loss='hinge', **params):
+    def __init__(self, kernel='precomputed', C=1, loss='hinge', intercept=0, **params):
         assert kernel == 'precomputed'
         self.C = C
         self.alpha = None
         self.loss = loss
         self.params = params
+        self.intercept = intercept
 
         if loss not in ('hinge', 'squared_hinge'):
             raise ValueError("Unknown loss: {}.".format(loss))
 
     def fit(self, k, y):
-        self.alpha = coordinate_descent(k=k.astype(np.float32), y=y.astype(np.int),
+        self.alpha = coordinate_descent(k=(k+self.intercept).astype(np.float32), y=y.astype(np.int),
                                         C=float(self.C), loss=self.loss, **self.params)
         return self
 
     def predict(self, k):
-        k = ag.tensor(k)
+        k = ag.tensor(k+self.intercept)
         return k.dot(self.alpha).data >= 0.
