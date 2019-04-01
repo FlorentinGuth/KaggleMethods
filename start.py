@@ -155,15 +155,15 @@ def final_submission(spectrum_k=39, mismatch_k=12, use_edit_kernel=True, compute
 
 
 if __name__ == '__main__':
-    final_submission(spectrum_k=39,
-                     mismatch_k=12,
-                     use_edit_kernel=True,
+    final_submission(spectrum_k=39,                 # Number of spectrum kernels to use.
+                     mismatch_k=12,                 # Number of mismatch kernels to use.
+                     use_edit_kernel=True,          # Whether to use edit kernel or not.
 
-                     compute_T=False,
+                     compute_T=False,               # Whether to optimize T values or use default.
 
                      file='separate_kernels',
                      out_weights_file='out_weights',
 
-                     model=svm.SVCCoordinate,
+                     model=svm.SVCCoordinate,       # SVM model
                      intercept=1.,
                      loss='hinge')
