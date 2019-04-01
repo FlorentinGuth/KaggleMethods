@@ -60,7 +60,7 @@ def edit_kernel(kernel='gaussian', scale=1, d=1):
     ins_del = .35
     sub_easy = .0626
     sub_hard = .3009
-    edit_distances = precomputed_kernels(levenshtein_distance, 'levenshtein_distance', max_workers=1,
+    edit_distances = precomputed_kernels(levenshtein_distance_v2, 'levenshtein_distance', max_workers=1,
                                          weights=np.array([ins_del, ins_del, ins_del, ins_del,
                                                            sub_hard, sub_easy, sub_hard, sub_hard, sub_easy, sub_hard],
                                                           np.float32))
