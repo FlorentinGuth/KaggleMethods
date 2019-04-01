@@ -5,6 +5,8 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor as Executor
 import multiprocessing
 
+from utils import transform_kernels, precomputed_kernels
+
 
 def parallel_dists(dist_fn, weights, X, Y=None, tqdm=False):
     X = ag.tensor(X.astype(np.int))
@@ -50,6 +52,21 @@ def levenshtein_distance_v2(X, Y=None, weights=None, tqdm=False):
 
 def local_alignment_kernel(X, Y=None, weights=None, tqdm=False, beta=0.5):
     return parallel_dists(native_utils.local_alignment_one_vs_many, np.exp(beta * weights), X, Y, tqdm)
+
+
+def edit_kernel(kernel='gaussian', scale=1, d=1):
+    # TODO: Is there a way not to use tensors?
+    edit_distances = precomputed_kernels(levenshtein_distance, 'levenshtein_distance')
+    edit_distances = transform_kernels([edit_distances], lambda _, D: D.data)
+
+    if kernel == 'gaussian':
+        return transform_kernels([edit_distances], lambda i, K: np.exp(-(K/scale) ** 2))
+    elif kernel == 'exp':
+        return transform_kernels([edit_distances], lambda i, K: np.exp(-K/scale))
+    elif kernel == 'polynomial':
+        return transform_kernels([edit_distances], lambda i, K: 1 / (1 + (K/scale) ** d))
+    else:
+        raise ValueError("Unknown kernel.")
 
 
 def main():
