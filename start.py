@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 
+import sys
+sys.path.append('src')
+
 import pickle
 import time
 import numpy as np
@@ -11,10 +14,6 @@ from levenshtein import edit_kernel
 from spectrum import k_spectrum_mismatch, k_spectrum
 from evaluation import svm_kernels
 from data import precomputed_kernels, transform_kernels
-
-
-# TODO: CYTHON setup.py?
-# TODO: README?
 
 
 def get_kernels(spectrum_k=39, mismatch_k=12, use_edit_kernel=True):

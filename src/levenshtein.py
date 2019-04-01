@@ -57,7 +57,7 @@ def local_alignment_kernel(X, Y=None, weights=None, tqdm=False, beta=0.5):
 
 def edit_kernel(kernel='gaussian', scale=1, d=1):
     # TODO: Is there a way not to use tensors?
-    edit_distances = precomputed_kernels(levenshtein_distance, 'levenshtein_distance')
+    edit_distances = precomputed_kernels(levenshtein_distance, 'levenshtein_distance', max_workers=1)
     edit_distances = transform_kernels([edit_distances], lambda _, D: D.data)
 
     if kernel == 'gaussian':
